@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Tournoi en direct</title>
+<style>
+:root{
+  --bg:#f5f2ec;--s1:#fff;--s2:#f0ece4;--s3:#e8e3d8;
+  --acc:#d42e20;--acc2:#e8552a;--gold:#c49a10;--purple:#9f7df5;
+  --green:#20c368;--muted:#8a8378;--text:#2b2722;--border:#ddd6c8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);padding-bottom:4rem}
+.topbar{position:sticky;top:0;z-index:50;background:var(--s1);border-bottom:2px solid var(--acc);
+  padding:.6rem .9rem;display:flex;align-items:center;justify-content:space-between;gap:.6rem}
+.topbar-title{font-family:'Bebas Neue',sans-serif;font-size:1.05rem;letter-spacing:.05em;color:var(--acc)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-right:.35rem}
+.live-dot.stale{background:var(--muted)}
+.tabs{display:flex;overflow-x:auto;background:var(--s1);border-bottom:1px solid var(--border);
+  position:sticky;top:48px;z-index:49;-webkit-overflow-scrolling:touch}
+.tab{flex-shrink:0;padding:.6rem .85rem;font-size:.72rem;font-weight:700;letter-spacing:.03em;
+  color:var(--muted);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+.tab.active{color:var(--acc);border-bottom-color:var(--acc)}
+.page{display:none;padding:.9rem}
+.page.active{display:block}
+.card{background:var(--s1);border-radius:12px;padding:.9rem;margin-bottom:.85rem;border:1px solid var(--border)}
+.card-hd{font-family:'Bebas Neue',sans-serif;font-size:.95rem;letter-spacing:.04em;color:var(--acc);
+  margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:2px solid var(--gold)}
+.match-row{display:grid;grid-template-columns:1fr auto 1fr;gap:.4rem;align-items:center;
+  padding:.55rem .3rem;border-bottom:1px solid var(--border)}
+.match-row:last-child{border-bottom:none}
+.m-team{font-weight:600;font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m-team.right{text-align:right}
+.m-team.won{color:var(--green);font-weight:800}
+.m-team.lost{opacity:.55}
+.m-score-wrap{display:flex;flex-direction:column;align-items:center;gap:.1rem;min-width:64px}
+.m-score-meta{font-size:.62rem;color:var(--muted);font-weight:600;text-align:center}
+.m-score{font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:.04em;
+  background:var(--s3);border-radius:6px;padding:.05rem .4rem;min-width:48px;text-align:center;color:var(--acc)}
+.m-score.notplayed{color:var(--muted);background:transparent;font-size:.85rem}
+.st-row{display:grid;grid-template-columns:24px 1fr 28px 28px 28px 36px;gap:.3rem;
+  align-items:center;padding:.4rem .2rem;font-size:.78rem;border-bottom:1px solid var(--border)}
+.st-row.header{font-weight:700;color:var(--muted);font-size:.65rem;text-transform:uppercase}
+.st-row:last-child{border-bottom:none}
+.st-row span{text-align:center}
+.st-row span:nth-child(2){text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.st-pts{font-weight:800;color:var(--acc)}
+.empty-msg{color:var(--muted);font-style:italic;text-align:center;padding:1.5rem;font-size:.85rem}
+.ticker{background:var(--acc);color:#fff;padding:.45rem .9rem;font-size:.78rem;font-weight:600;
+  white-space:nowrap;overflow:hidden}
+.ticker-inner{display:inline-block}
+.chrono-box{text-align:center;padding:1.5rem 1rem}
+.chrono-time{font-family:'Bebas Neue',sans-serif;font-size:3.2rem;letter-spacing:.04em;color:var(--acc)}
+.chrono-label{font-size:.8rem;color:var(--muted);margin-top:.3rem}
+.fullscreen-btn{position:fixed;bottom:1rem;right:1rem;z-index:60;background:var(--acc);color:#fff;
+  border:none;border-radius:50px;padding:.7rem 1.1rem;font-size:.78rem;font-weight:700;box-shadow:0 3px 14px rgba(0,0,0,.25)}
+.badge{display:inline-block;font-size:.55rem;font-weight:700;padding:.1rem .35rem;border-radius:4px;margin-left:.3rem}
+.b-main{background:rgba(196,154,16,.15);color:var(--gold)}
+.b-consol{background:rgba(159,125,245,.15);color:var(--purple)}
+.field-tag{font-size:.6rem;color:var(--muted);font-weight:600}
+.config-screen{padding:2rem 1.2rem;text-align:center}
+.config-screen input{width:100%;padding:.6rem;border:1px solid var(--border);border-radius:6px;margin-bottom:.6rem;font-size:.85rem}
+.config-screen button{width:100%;padding:.65rem;background:var(--acc);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer}
+</style>
+</head>
+<body>
+
+<!-- ═══ Écran de configuration (premier accès sans paramètres dans l'URL) ═══ -->
+<div id="config-screen" class="config-screen" style="display:none">
+  <h2 style="font-family:'Bebas Neue',sans-serif;color:var(--acc);margin-bottom:1rem">Configuration requise</h2>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">Ce lien n'a pas été ouvert depuis l'application principale. Renseignez les informations du dépôt.</p>
+  <input type="text" id="cfg-owner" placeholder="Propriétaire GitHub">
+  <input type="text" id="cfg-repo" placeholder="Nom du dépôt">
+  <button onclick="manualConfig()">Valider</button>
+</div>
+
+<!-- ═══ Application publique ═══ -->
+<div id="app" style="display:none">
+  <div class="topbar">
+    <div class="topbar-title"><span id="live-dot" class="live-dot"></span><span id="tournament-name">Tournoi</span></div>
+    <div style="font-size:.7rem;color:var(--muted)" id="last-update">—</div>
+  </div>
+  <div class="ticker"><div class="ticker-inner" id="ticker-text">Chargement…</div></div>
+  <div class="tabs">
+    <div class="tab active" data-tab="live">🔴 Direct</div>
+    <div class="tab" data-tab="standings">📊 Classements</div>
+    <div class="tab" data-tab="planning">📅 Planning</div>
+    <div class="tab" data-tab="arbitres">⚖️ Arbitres</div>
+    <div class="tab" data-tab="chrono">⏱ Chrono</div>
+  </div>
+
+  <div class="page active" id="page-live">
+    <div class="card">
+      <div class="card-hd">⏱ En cours &amp; à venir</div>
+      <div id="live-upcoming"><div class="empty-msg">Chargement…</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">✅ Derniers résultats</div>
+      <div id="live-done"><div class="empty-msg">Chargement…</div></div>
+    </div>
+  </div>
+
+  <div class="page" id="page-standings">
+    <div id="standings-out"><div class="empty-msg">Chargement…</div></div>
+  </div>
+
+  <div class="page" id="page-planning">
+    <div id="planning-out"><div class="empty-msg">Chargement…</div></div>
+  </div>
+
+  <div class="page" id="page-arbitres">
+    <div id="arbitres-out"><div class="empty-msg">Chargement…</div></div>
+  </div>
+
+  <div class="page" id="page-chrono">
+    <div class="chrono-box">
+      <div class="chrono-time" id="chrono-display">--:--</div>
+      <div class="chrono-label" id="chrono-label">Chronomètre</div>
+    </div>
+  </div>
+
+  <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Plein écran</button>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// VUE PUBLIQUE — LECTURE SEULE STRICTE
+// Aucune fonction d'écriture n'existe dans ce fichier : pas de saveState,
+// pas d'accès à un quelconque token, pas de modification de match/score/arbitre.
+// Les données sont lues exclusivement depuis tournament-data.json (polling 8s).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const POLL_INTERVAL_MS = 8000;
+let DATA = null; // dernier état reçu : {cfg, teams, pools, matches, arbitres, finalsValidated, tournamentValidated, ts}
+let lastFetchOk = false;
+
+const pad=n=>String(n).padStart(2,'0');
+const m2t=m=>m==null?'--:--':`${pad(Math.floor(m/60))}:${pad(m%60)}`;
+
+function teamName(id){
+  if(!DATA) return '?';
+  if(!id||id==='TBD') return '⏳ TBD';
+  if(typeof id==='string' && id.startsWith('W(')) return id;
+  const t=DATA.teams.find(x=>x.id===id);
+  return t?t.name:'?';
+}
+
+// ── Détermination de l'URL des données : query params ?owner=&repo= ou config locale ──
+function getRepoConfig(){
+  const params=new URLSearchParams(window.location.search);
+  const owner=params.get('owner');
+  const repo=params.get('repo');
+  if(owner && repo) return {owner, repo};
+  try{
+    const saved=JSON.parse(localStorage.getItem('hb_public_cfg')||'{}');
+    if(saved.owner && saved.repo) return saved;
+  }catch(e){}
+  return null;
+}
+
+function manualConfig(){
+  const owner=document.getElementById('cfg-owner').value.trim();
+  const repo=document.getElementById('cfg-repo').value.trim();
+  if(!owner||!repo){alert('Veuillez remplir les deux champs');return;}
+  localStorage.setItem('hb_public_cfg', JSON.stringify({owner,repo}));
+  location.reload();
+}
+
+let REPO_CFG=null;
+
+function dataUrl(){
+  // Cache-busting via timestamp pour éviter le cache CDN de GitHub Pages / raw.githubusercontent
+  return `https://raw.githubusercontent.com/${REPO_CFG.owner}/${REPO_CFG.repo}/main/tournament-data.json?t=${Date.now()}`;
+}
+
+async function fetchData(){
+  try{
+    const resp=await fetch(dataUrl(),{cache:'no-store'});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const json=await resp.json();
+    DATA=json;
+    lastFetchOk=true;
+    renderAll();
+    updateLiveDot(true);
+  }catch(e){
+    lastFetchOk=false;
+    updateLiveDot(false);
+    console.warn('Échec récupération données :', e);
+  }
+}
+
+function updateLiveDot(ok){
+  const dot=document.getElementById('live-dot');
+  dot.className = ok ? 'live-dot' : 'live-dot stale';
+  if(DATA && DATA.ts){
+    const ago=Math.round((Date.now()-DATA.ts)/1000);
+    document.getElementById('last-update').textContent = ago<5?'à jour':`maj il y a ${ago}s`;
+  }
+}
+
+// ── RENDU : Onglet Direct (matchs en cours/à venir + derniers résultats) ───────
+function renderLive(){
+  const now=new Date();
+  const cur=now.getHours()*60+now.getMinutes();
+  const isLive=m=>!m.played && m.time!=null && cur>=m.time && cur<m.time+DATA.cfg.dur;
+
+  const upcoming=DATA.matches.filter(m=>!m.played && m.time!=null && m.home!=='TBD' && m.away!=='TBD')
+    .sort((a,b)=>(a.time??999999)-(b.time??999999));
+  let uh='';
+  upcoming.slice(0,12).forEach(m=>{
+    const live=isLive(m);
+    uh+=matchRow(m, live?' style="background:rgba(212,46,32,.06)"':'');
+  });
+  document.getElementById('live-upcoming').innerHTML = uh || '<div class="empty-msg">Aucun match à venir</div>';
+
+  const done=DATA.matches.filter(m=>m.played).sort((a,b)=>(b.time??0)-(a.time??0));
+  let dh='';
+  done.slice(0,10).forEach(m=>{ dh+=matchRow(m); });
+  document.getElementById('live-done').innerHTML = dh || '<div class="empty-msg">Aucun résultat encore</div>';
+
+  // Ticker
+  const ticker=document.getElementById('ticker-text');
+  if(done.length){
+    ticker.textContent = done.slice(0,5).map(m=>`${teamName(m.home)} ${m.homeScore}–${m.awayScore} ${teamName(m.away)}`).join('   ·   ');
+  } else {
+    ticker.textContent = `🏐 ${DATA.cfg.name||'Tournoi'} — Suivez le direct ici !`;
+  }
+}
+
+function matchRow(m, extraStyle=''){
+  const played=m.played;
+  const hWin=played && m.homeScore>m.awayScore;
+  const aWin=played && m.awayScore>m.homeScore;
+  const timeStr=m2t(m.time);
+  let phaseBadge='';
+  if(['main','main_3rd','main_final'].includes(m.phase)) phaseBadge='<span class="badge b-main">Princ.</span>';
+  else if(['consol','consol_3rd','consol_final'].includes(m.phase)) phaseBadge='<span class="badge b-consol">Consol.</span>';
+  return `<div class="match-row"${extraStyle}>
+    <div class="m-team ${hWin?'won':played&&!hWin?'lost':''}">${teamName(m.home)}</div>
+    <div class="m-score-wrap">
+      <div class="m-score-meta">${timeStr}${m.field?' · T'+m.field:''}${phaseBadge}</div>
+      <div class="m-score ${played?'':'notplayed'}">${played?m.homeScore+' – '+m.awayScore:'VS'}</div>
+    </div>
+    <div class="m-team right ${aWin?'won':played&&!aWin?'lost':''}">${teamName(m.away)}</div>
+  </div>`;
+}
+
+// ── RENDU : Onglet Classements ──────────────────────────────────────────────
+function computeStandings(){
+  const m={};
+  DATA.teams.forEach(t=>m[t.id]={id:t.id,name:t.name,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0});
+  const ptsW=DATA.cfg.ptsW??3, ptsD=DATA.cfg.ptsD??1, ptsL=DATA.cfg.ptsL??0;
+  DATA.matches.filter(x=>x.phase==='pool'&&x.played).forEach(x=>{
+    const h=m[x.home],a=m[x.away];
+    if(!h||!a)return;
+    h.p++;a.p++;h.gf+=x.homeScore;h.ga+=x.awayScore;a.gf+=x.awayScore;a.ga+=x.homeScore;
+    if(x.homeScore>x.awayScore){h.w++;h.pts+=ptsW;a.l++;a.pts+=ptsL;}
+    else if(x.homeScore<x.awayScore){a.w++;a.pts+=ptsW;h.l++;h.pts+=ptsL;}
+    else{h.d++;h.pts+=ptsD;a.d++;a.pts+=ptsD;}
+  });
+  return m;
+}
+
+function standingsTable(rows, title){
+  let h=`<div class="card"><div class="card-hd">${title}</div>`;
+  h+=`<div class="st-row header"><span>#</span><span>Équipe</span><span>J</span><span>V</span><span>D</span><span>Pts</span></div>`;
+  rows.forEach((s,i)=>{
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
+    h+=`<div class="st-row"><span>${medal}</span><span>${s.name}</span><span>${s.p}</span><span>${s.w}</span><span>${s.l}</span><span class="st-pts">${s.pts}</span></div>`;
+  });
+  h+=`</div>`;
+  return h;
+}
+
+function renderStandings(){
+  const out=document.getElementById('standings-out');
+  if(DATA.pools && DATA.pools.length && !DATA.pools.every(p=>p.every(t=>{
+    const stMap=computeStandings();
+    return DATA.matches.filter(m=>m.phase==='pool'&&(m.home===t.id||m.away===t.id)).every(m=>m.played);
+  }))){
+    // Phase de poules — un tableau par poule
+    const stMap=computeStandings();
+    let html='';
+    DATA.pools.forEach((pool,pi)=>{
+      const rows=[...pool].map(t=>stMap[t.id]).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
+      html+=standingsTable(rows, `Poule ${String.fromCharCode(65+pi)}`);
+    });
+    out.innerHTML = html || '<div class="empty-msg">En attente des poules…</div>';
+    return;
+  }
+  // Phase finale ou poules finales (main/consol)
+  const mainMs=DATA.matches.filter(m=>m.phase==='main');
+  const consolMs=DATA.matches.filter(m=>m.phase==='consol');
+  let html='';
+  if(mainMs.length||consolMs.length){
+    const stMap=computeStandings();
+    const mainTeams=[...new Set(mainMs.flatMap(m=>[m.home,m.away]))].map(id=>stMap[id]).filter(Boolean);
+    const consolTeams=[...new Set(consolMs.flatMap(m=>[m.home,m.away]))].map(id=>stMap[id]).filter(Boolean);
+    if(mainTeams.length) html+=standingsTable(mainTeams.sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))), '🥇 Poule Principale');
+    if(consolTeams.length) html+=standingsTable(consolTeams.sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))), '🥈 Poule Consolante');
+  } else {
+    const stMap=computeStandings();
+    const rows=Object.values(stMap).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
+    html=standingsTable(rows, '📊 Classement');
+  }
+  out.innerHTML = html || '<div class="empty-msg">Aucun classement disponible</div>';
+}
+
+// ── RENDU : Onglet Planning (tous les matchs, triés par heure) ─────────────
+function renderPlanning(){
+  const out=document.getElementById('planning-out');
+  const sorted=[...DATA.matches].filter(m=>m.time!=null).sort((a,b)=>a.time-b.time);
+  let html='<div class="card"><div class="card-hd">📅 Planning complet</div>';
+  sorted.forEach(m=>{ html+=matchRow(m); });
+  html+='</div>';
+  out.innerHTML = sorted.length ? html : '<div class="empty-msg">Aucun match planifié</div>';
+}
+
+// ── RENDU : Onglet Arbitres ──────────────────────────────────────────────
+function renderArbitres(){
+  const out=document.getElementById('arbitres-out');
+  const byRef={};
+  DATA.matches.filter(m=>m.referee && m.time!=null).forEach(m=>{
+    if(!byRef[m.referee]) byRef[m.referee]=[];
+    byRef[m.referee].push(m);
+  });
+  let html='';
+  Object.keys(byRef).sort().forEach(ref=>{
+    const matches=byRef[ref].sort((a,b)=>a.time-b.time);
+    html+=`<div class="card"><div class="card-hd">⚖️ ${ref}</div>`;
+    matches.forEach(m=>{ html+=matchRow(m); });
+    html+='</div>';
+  });
+  out.innerHTML = html || '<div class="empty-msg">Aucune affectation d\\'arbitre</div>';
+}
+
+// ── RENDU : Chronomètre (lecture seule — reflète l'état publié, pas de contrôle) ──
+function renderChrono(){
+  // Le chrono n'est pas piloté localement : il affiche l'heure courante du système
+  // synchronisée avec le statut "en direct" le plus pertinent (prochain match / match en cours).
+  const now=new Date();
+  const cur=now.getHours()*60+now.getMinutes();
+  const live=DATA.matches.find(m=>!m.played && m.time!=null && cur>=m.time && cur<m.time+DATA.cfg.dur);
+  if(live){
+    const remain=(live.time+DATA.cfg.dur)-cur;
+    document.getElementById('chrono-display').textContent = `${pad(Math.max(0,remain))}:00`;
+    document.getElementById('chrono-label').textContent = `${teamName(live.home)} vs ${teamName(live.away)} — fin estimée`;
+  } else {
+    document.getElementById('chrono-display').textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    document.getElementById('chrono-label').textContent = 'Heure actuelle — aucun match en cours';
+  }
+}
+
+function renderAll(){
+  if(!DATA) return;
+  document.getElementById('tournament-name').textContent = DATA.cfg.name || 'Tournoi';
+  renderLive();
+  renderStandings();
+  renderPlanning();
+  renderArbitres();
+  renderChrono();
+}
+
+// ── Navigation par onglets ──────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('page-'+tab.dataset.tab).classList.add('active');
+  });
+});
+
+function toggleFullscreen(){
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen().catch(()=>{});
+  }
+}
+
+// ── Initialisation ──────────────────────────────────────────────────────
+REPO_CFG = getRepoConfig();
+if(!REPO_CFG){
+  document.getElementById('config-screen').style.display='block';
+} else {
+  document.getElementById('app').style.display='block';
+  fetchData();
+  setInterval(fetchData, POLL_INTERVAL_MS);
+  setInterval(renderChrono, 1000); // l'horloge avance même sans nouvelle donnée
+}
+</script>
+</body>
+</html>
