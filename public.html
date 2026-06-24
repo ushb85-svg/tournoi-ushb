@@ -106,10 +106,20 @@ body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);
   </div>
 
   <div class="page" id="page-planning">
+    <div style="padding:.5rem 0 .75rem">
+      <select id="planning-team-filter" onchange="renderPlanning()" style="padding:.45rem .7rem;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:.85rem;min-width:220px">
+        <option value="">📋 Toutes les équipes</option>
+      </select>
+    </div>
     <div id="planning-out"><div class="empty-msg">Chargement…</div></div>
   </div>
 
   <div class="page" id="page-arbitres">
+    <div style="padding:.5rem 0 .75rem">
+      <select id="arbitres-ref-filter" onchange="renderArbitres()" style="padding:.45rem .7rem;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:.85rem;min-width:220px">
+        <option value="">⚖️ Tous les arbitres</option>
+      </select>
+    </div>
     <div id="arbitres-out"><div class="empty-msg">Chargement…</div></div>
   </div>
 
@@ -315,18 +325,39 @@ function renderStandings(){
 // ── RENDU : Onglet Planning (tous les matchs, triés par heure) ─────────────
 function renderPlanning(){
   const out=document.getElementById('planning-out');
-  const sorted=[...DATA.matches].filter(m=>m.time!=null).sort((a,b)=>a.time-b.time);
-  let html='<div class="card"><div class="card-hd">📅 Planning complet</div>';
+  // Peupler le select la première fois (et à chaque appel si les équipes changent)
+  const sel=document.getElementById('planning-team-filter');
+  if(sel){
+    const prev=sel.value;
+    const teams=[...new Set(DATA.matches.flatMap(m=>[m.home,m.away]).filter(id=>id&&id!=='TBD'))];
+    teams.sort((a,b)=>(DATA.teams.find(t=>t.id===a)?.name||a).localeCompare(DATA.teams.find(t=>t.id===b)?.name||b));
+    sel.innerHTML='<option value="">📋 Toutes les équipes</option>';
+    teams.forEach(id=>{ const n=teamName(id); sel.innerHTML+=`<option value="${id}"${id===prev?' selected':''}>${n}</option>`; });
+  }
+  const filterTeam=sel?sel.value:'';
+  let sorted=[...DATA.matches].filter(m=>m.time!=null).sort((a,b)=>a.time-b.time);
+  if(filterTeam) sorted=sorted.filter(m=>m.home===filterTeam||m.away===filterTeam);
+  const title=filterTeam?`📋 Planning — ${teamName(filterTeam)}`:'📋 Planning complet';
+  let html=`<div class="card"><div class="card-hd">${title}</div>`;
   sorted.forEach(m=>{ html+=matchRow(m); });
   html+='</div>';
-  out.innerHTML = sorted.length ? html : '<div class="empty-msg">Aucun match planifié</div>';
+  out.innerHTML = sorted.length ? html : '<div class="empty-msg">Aucun match pour cette équipe</div>';
 }
 
 // ── RENDU : Onglet Arbitres ──────────────────────────────────────────────
 function renderArbitres(){
   const out=document.getElementById('arbitres-out');
+  // Peupler le select des arbitres
+  const sel=document.getElementById('arbitres-ref-filter');
+  if(sel){
+    const prev=sel.value;
+    const refs=[...new Set(DATA.matches.filter(m=>m.referee&&m.time!=null).map(m=>m.referee))].sort();
+    sel.innerHTML='<option value="">⚖️ Tous les arbitres</option>';
+    refs.forEach(r=>{ sel.innerHTML+=`<option value="${r}"${r===prev?' selected':''}>${r}</option>`; });
+  }
+  const filterRef=sel?sel.value:'';
   const byRef={};
-  DATA.matches.filter(m=>m.referee && m.time!=null).forEach(m=>{
+  DATA.matches.filter(m=>m.referee && m.time!=null && (!filterRef||m.referee===filterRef)).forEach(m=>{
     if(!byRef[m.referee]) byRef[m.referee]=[];
     byRef[m.referee].push(m);
   });
