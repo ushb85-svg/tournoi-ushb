@@ -180,15 +180,32 @@ function manualConfig(){
 let REPO_CFG=null;
 
 function dataUrl(){
-  // L'API Contents de GitHub (pas raw.githubusercontent.com) : ce dernier est mis
-  // en cache plusieurs minutes côté CDN GitHub, ce qui retardait l'affichage des
-  // mises à jour. L'API Contents renvoie systématiquement la version la plus récente.
+  // URL API GitHub Contents — version la plus fraîche, mais limitée à 60 req/h sans token
   return `https://api.github.com/repos/${REPO_CFG.owner}/${REPO_CFG.repo}/contents/tournament-data.json?ref=main&t=${Date.now()}`;
+}
+
+function rawUrl(){
+  // URL raw.githubusercontent.com — pas de quota, latence CDN ~30s acceptable en tournoi
+  return `https://raw.githubusercontent.com/${REPO_CFG.owner}/${REPO_CFG.repo}/main/tournament-data.json?t=${Date.now()}`;
 }
 
 async function fetchData(){
   try{
-    const resp=await fetch(dataUrl(),{cache:'no-store',headers:{'Accept':'application/vnd.github.v3+json'}});
+    // Tentative 1 : API GitHub Contents (fraîcheur maximale)
+    let resp=await fetch(dataUrl(),{cache:'no-store',headers:{'Accept':'application/vnd.github.v3+json'}});
+
+    // Fallback raw si quota API dépassé (403) ou autre erreur serveur GitHub (5xx)
+    if(resp.status===403||resp.status===429||(resp.status>=500&&resp.status<600)){
+      resp=await fetch(rawUrl(),{cache:'no-store'});
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      const json=await resp.json();
+      DATA=json;
+      lastFetchOk=true;
+      renderAll();
+      updateLiveDot(true);
+      return; // données JSON directes, pas de base64
+    }
+
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     const apiData=await resp.json();
     // L'API Contents renvoie le fichier encodé en base64 dans apiData.content
