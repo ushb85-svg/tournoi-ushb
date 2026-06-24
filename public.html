@@ -179,38 +179,16 @@ function manualConfig(){
 
 let REPO_CFG=null;
 
-function dataUrl(){
-  // URL API GitHub Contents — version la plus fraîche, mais limitée à 60 req/h sans token
-  return `https://api.github.com/repos/${REPO_CFG.owner}/${REPO_CFG.repo}/contents/tournament-data.json?ref=main&t=${Date.now()}`;
-}
-
 function rawUrl(){
-  // URL raw.githubusercontent.com — pas de quota, latence CDN ~30s acceptable en tournoi
+  // raw.githubusercontent.com : pas de quota, pas de CORS, JSON direct
   return `https://raw.githubusercontent.com/${REPO_CFG.owner}/${REPO_CFG.repo}/main/tournament-data.json?t=${Date.now()}`;
 }
 
 async function fetchData(){
   try{
-    // Tentative 1 : API GitHub Contents (fraîcheur maximale)
-    let resp=await fetch(dataUrl(),{cache:'no-store',headers:{'Accept':'application/vnd.github.v3+json'}});
-
-    // Fallback raw si quota API dépassé (403) ou autre erreur serveur GitHub (5xx)
-    if(resp.status===403||resp.status===429||(resp.status>=500&&resp.status<600)){
-      resp=await fetch(rawUrl(),{cache:'no-store'});
-      if(!resp.ok) throw new Error('HTTP '+resp.status);
-      const json=await resp.json();
-      DATA=json;
-      lastFetchOk=true;
-      renderAll();
-      updateLiveDot(true);
-      return; // données JSON directes, pas de base64
-    }
-
+    const resp=await fetch(rawUrl(),{cache:'no-store'});
     if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const apiData=await resp.json();
-    // L'API Contents renvoie le fichier encodé en base64 dans apiData.content
-    const decoded=decodeURIComponent(escape(atob(apiData.content.replace(/\n/g,''))));
-    const json=JSON.parse(decoded);
+    const json=await resp.json();
     DATA=json;
     lastFetchOk=true;
     renderAll();
@@ -251,9 +229,12 @@ function renderLive(){
   done.slice(0,10).forEach(m=>{ dh+=matchRow(m); });
   document.getElementById('live-done').innerHTML = dh || '<div class="empty-msg">Aucun résultat encore</div>';
 
-  // Ticker
+  // Ticker — priorité au message personnalisé de l'Admin (DATA.tickerMsg)
+  // Si l'Admin a saisi un message dans le bandeau, il écrase les résultats automatiques.
   const ticker=document.getElementById('ticker-text');
-  if(done.length){
+  if(DATA.tickerMsg && DATA.tickerMsg.trim()){
+    ticker.textContent = DATA.tickerMsg.trim();
+  } else if(done.length){
     ticker.textContent = done.slice(0,5).map(m=>`${teamName(m.home)} ${m.homeScore}–${m.awayScore} ${teamName(m.away)}`).join('   ·   ');
   } else {
     ticker.textContent = `🏐 ${DATA.cfg.name||'Tournoi'} — Suivez le direct ici !`;
@@ -390,19 +371,45 @@ function renderArbitres(){
 
 // ── RENDU : Chronomètre (lecture seule — reflète l'état publié, pas de contrôle) ──
 function renderChrono(){
-  // Le chrono n'est pas piloté localement : il affiche l'heure courante du système
-  // synchronisée avec le statut "en direct" le plus pertinent (prochain match / match en cours).
-  const now=new Date();
-  const cur=now.getHours()*60+now.getMinutes();
-  const live=DATA.matches.find(m=>!m.played && m.time!=null && cur>=m.time && cur<m.time+DATA.cfg.dur);
-  if(live){
-    const remain=(live.time+DATA.cfg.dur)-cur;
-    document.getElementById('chrono-display').textContent = `${pad(Math.max(0,remain))}:00`;
-    document.getElementById('chrono-label').textContent = `${teamName(live.home)} vs ${teamName(live.away)} — fin estimée`;
-  } else {
-    document.getElementById('chrono-display').textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    document.getElementById('chrono-label').textContent = 'Heure actuelle — aucun match en cours';
+  const dispEl=document.getElementById('chrono-display');
+  const labelEl=document.getElementById('chrono-label');
+
+  // Si l'Admin a publié un état chrono, l'utiliser comme source unique
+  if(DATA.chronoState && DATA.chronoState.display && DATA.chronoState.display!=='--:--'){
+    const cs=DATA.chronoState;
+    if(cs.nextMsg){
+      dispEl.textContent='Place aux prochains matchs';
+      dispEl.className='chrono-time';
+      labelEl.textContent='';
+    } else if(cs.running){
+      // Compenser l'écoulement depuis la publication (DATA.ts ou cs.ts)
+      const publishedAt=cs.ts||DATA.ts||Date.now();
+      const elapsedSec=Math.round((Date.now()-publishedAt)/1000);
+      // Extraire les secondes depuis le format MM:SS
+      const parts=cs.display.split(':').map(Number);
+      const totalSec=(parts[0]||0)*60+(parts[1]||0);
+      const remaining=Math.max(0, totalSec-elapsedSec);
+      const m=Math.floor(remaining/60), s=remaining%60;
+      dispEl.textContent=`${pad(m)}:${pad(s)}`;
+      dispEl.className='chrono-time running';
+      labelEl.textContent='⏱ Chrono Admin en cours';
+    } else if(cs.finished){
+      dispEl.textContent='00:00';
+      dispEl.className='chrono-time finished';
+      labelEl.textContent='⏹ Fin du chrono';
+    } else {
+      dispEl.textContent=cs.display;
+      dispEl.className='chrono-time';
+      labelEl.textContent='⏸ Chrono Admin (en pause)';
+    }
+    return;
   }
+
+  // Fallback : heure courante si aucun état chrono Admin disponible
+  const now=new Date();
+  dispEl.textContent=`${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  dispEl.className='chrono-time';
+  labelEl.textContent='Heure actuelle — aucun chrono actif';
 }
 
 function renderAll(){
