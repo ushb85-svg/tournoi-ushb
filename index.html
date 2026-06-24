@@ -5602,10 +5602,22 @@ async function _publishTournamentData(){
   _shareLivePublishing=true;
 
   const apiUrl=`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/tournament-data.json`;
+  // tickerMsg : message du bandeau inférieur (localStorage ou champ de saisie)
+  const _tickerMsg=(document.getElementById('ticker-custom-msg')||{}).value
+    || localStorage.getItem('hb_ticker_msg') || '';
+  // chronoState : capture instantanée du chrono Admin pour synchronisation côté public
+  // Le client public calcule l'écoulement depuis ts pour rester synchronisé même entre deux polls
+  const _chronoEl=document.getElementById('chrono-display');
+  const _chronoText=_chronoEl?_chronoEl.textContent:'--:--';
+  const _chronoRunning=_chronoEl&&_chronoEl.classList.contains('running');
+  const _chronoFinished=_chronoEl&&_chronoEl.classList.contains('finished');
+  const _chronoNextMsg=_chronoEl&&_chronoEl.textContent==='Place aux prochains matchs';
   const payload={
     cfg:S.cfg, teams:S.teams, pools:S.pools, matches:S.matches,
     arbitres:S.arbitres, finalsValidated:S.finalsValidated,
-    tournamentValidated:S.tournamentValidated, ts:Date.now()
+    tournamentValidated:S.tournamentValidated, ts:Date.now(),
+    tickerMsg:_tickerMsg,
+    chronoState:{display:_chronoText, running:_chronoRunning, finished:_chronoFinished, nextMsg:_chronoNextMsg, ts:Date.now()}
   };
   const contentB64=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
 
