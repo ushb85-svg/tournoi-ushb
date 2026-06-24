@@ -170,15 +170,20 @@ function manualConfig(){
 let REPO_CFG=null;
 
 function dataUrl(){
-  // Cache-busting via timestamp pour éviter le cache CDN de GitHub Pages / raw.githubusercontent
-  return `https://raw.githubusercontent.com/${REPO_CFG.owner}/${REPO_CFG.repo}/main/tournament-data.json?t=${Date.now()}`;
+  // L'API Contents de GitHub (pas raw.githubusercontent.com) : ce dernier est mis
+  // en cache plusieurs minutes côté CDN GitHub, ce qui retardait l'affichage des
+  // mises à jour. L'API Contents renvoie systématiquement la version la plus récente.
+  return `https://api.github.com/repos/${REPO_CFG.owner}/${REPO_CFG.repo}/contents/tournament-data.json?ref=main&t=${Date.now()}`;
 }
 
 async function fetchData(){
   try{
-    const resp=await fetch(dataUrl(),{cache:'no-store'});
+    const resp=await fetch(dataUrl(),{cache:'no-store',headers:{'Accept':'application/vnd.github.v3+json'}});
     if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const json=await resp.json();
+    const apiData=await resp.json();
+    // L'API Contents renvoie le fichier encodé en base64 dans apiData.content
+    const decoded=decodeURIComponent(escape(atob(apiData.content.replace(/\n/g,''))));
+    const json=JSON.parse(decoded);
     DATA=json;
     lastFetchOk=true;
     renderAll();
