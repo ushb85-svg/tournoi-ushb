@@ -2244,6 +2244,14 @@ function generate(){
   S.teams=names.slice(0,n).map((name,i)=>({id:uid(),name,tel:tels[i]||''}));
   S.pools=buildPools(S.teams, S.cfg.poolsMode);
   S.matches=[];
+  // Réinitialisation complète pour éviter que les données de l'ancien tournoi polluent le nouveau
+  S.finalsValidated=false;
+  S.tournamentValidated=false;
+  S.currentMatch=null;
+  // Effacer le message personnalisé du bandeau (nouveau tournoi = bandeau propre)
+  try{ localStorage.removeItem('hb_ticker_msg'); }catch(e){}
+  const tickerInp=document.getElementById('ticker-custom-msg');
+  if(tickerInp) tickerInp.value='';
 
   const cfg=S.cfg;
   const ft=Array(cfg.fields).fill(t2m(cfg.start));
@@ -5594,11 +5602,20 @@ function toggleLiveBroadcast(){
 // pour le mettre à jour (sinon GitHub refuse l'écrasement).
 let _shareLivePublishTimer=null;
 let _shareLivePublishing=false;
+let _shareLiveDebounceTimer=null;
 
-async function _publishTournamentData(){
+// Wrapper debounce : si plusieurs déclenchements arrivent en rafale (ex. saisie rapide),
+// seul le dernier est effectivement envoyé (délai 400ms). Ne bloque plus les publications
+// déclenchées par action utilisateur même si le timer 8s vient de s'exécuter.
+function _publishTournamentData(){
+  clearTimeout(_shareLiveDebounceTimer);
+  _shareLiveDebounceTimer=setTimeout(_doPublishTournamentData, 400);
+}
+
+async function _doPublishTournamentData(){
   const cfg=_shareLiveCfg();
   if(!cfg.owner||!cfg.repo||!cfg.token||!cfg.broadcasting) return;
-  if(_shareLivePublishing) return; // évite les publications concurrentes
+  if(_shareLivePublishing) return; // évite les publications strictement concurrentes (réseau)
   _shareLivePublishing=true;
 
   const apiUrl=`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/tournament-data.json`;
@@ -5652,8 +5669,8 @@ async function _publishTournamentData(){
 
 function _startShareLiveAutoPublish(){
   _stopShareLiveAutoPublish();
-  // Publication immédiate + toutes les 8s tant que la diffusion est active
-  _shareLivePublishTimer=setInterval(_publishTournamentData, 8000);
+  // Le timer appelle directement _doPublishTournamentData pour éviter l'accumulation de debounce
+  _shareLivePublishTimer=setInterval(_doPublishTournamentData, 8000);
 }
 function _stopShareLiveAutoPublish(){
   if(_shareLivePublishTimer){clearInterval(_shareLivePublishTimer);_shareLivePublishTimer=null;}
@@ -5664,6 +5681,8 @@ function _stopShareLiveAutoPublish(){
   const cfg=_shareLiveCfg();
   if(cfg.broadcasting){
     _startShareLiveAutoPublish();
+    // Publication immédiate au redémarrage — évite d'attendre le premier tick (8s)
+    _publishTournamentData();
   }
 })();
 </script>
