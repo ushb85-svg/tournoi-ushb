@@ -263,7 +263,8 @@ function matchRow(m, extraStyle=''){
   </div>`;
 }
 
-// ── RENDU : Onglet Classements ──────────────────────────────────────────────
+// ── RENDU : Onglet Classements — logique identique à l'Admin ────────────────
+// computeStandings : classement de poules (matchs phase=pool uniquement)
 function computeStandings(){
   const m={};
   DATA.teams.forEach(t=>m[t.id]={id:t.id,name:t.name,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0});
@@ -279,12 +280,33 @@ function computeStandings(){
   return m;
 }
 
+// computeFinalStandings : classement d'une phase finale (main ou consol) — copié de l'Admin
+function computeFinalStandings(phase){
+  const m={};
+  const phaseMs=DATA.matches.filter(x=>x.phase===phase);
+  const teams=new Set([...phaseMs.map(x=>x.home),...phaseMs.map(x=>x.away)]).values();
+  for(const tid of teams){
+    const t=DATA.teams.find(x=>x.id===tid);
+    if(t)m[tid]={id:tid,name:t.name,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0};
+  }
+  const ptsW=DATA.cfg.ptsW??3,ptsD=DATA.cfg.ptsD??1,ptsL=DATA.cfg.ptsL??0;
+  phaseMs.filter(x=>x.played).forEach(x=>{
+    const h=m[x.home],a=m[x.away];if(!h||!a)return;
+    h.p++;a.p++;h.gf+=x.homeScore;h.ga+=x.awayScore;a.gf+=x.awayScore;a.ga+=x.homeScore;
+    if(x.homeScore>x.awayScore){h.w++;h.pts+=ptsW;a.l++;a.pts+=ptsL;}
+    else if(x.homeScore<x.awayScore){a.w++;a.pts+=ptsW;h.l++;h.pts+=ptsL;}
+    else{h.d++;h.pts+=ptsD;a.d++;a.pts+=ptsD;}
+  });
+  return m;
+}
+
+// Tableau de classement simple (poules)
 function standingsTable(rows, title){
   let h=`<div class="card"><div class="card-hd">${title}</div>`;
-  h+=`<div class="st-row header"><span>#</span><span>Équipe</span><span>J</span><span>V</span><span>D</span><span>Pts</span></div>`;
+  h+=`<div class="st-row header"><span>#</span><span>Équipe</span><span>J</span><span>V</span><span>N</span><span>D</span><span>BP</span><span>BC</span><span>Pts</span></div>`;
   rows.forEach((s,i)=>{
     const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
-    h+=`<div class="st-row"><span>${medal}</span><span>${s.name}</span><span>${s.p}</span><span>${s.w}</span><span>${s.l}</span><span class="st-pts">${s.pts}</span></div>`;
+    h+=`<div class="st-row" style="grid-template-columns:24px 1fr 28px 28px 28px 28px 28px 28px 36px"><span>${medal}</span><span>${s.name}</span><span>${s.p}</span><span>${s.w}</span><span>${s.d}</span><span>${s.l}</span><span>${s.gf}</span><span>${s.ga}</span><span class="st-pts">${s.pts}</span></div>`;
   });
   h+=`</div>`;
   return h;
@@ -292,74 +314,176 @@ function standingsTable(rows, title){
 
 function renderStandings(){
   const out=document.getElementById('standings-out');
-  if(DATA.pools && DATA.pools.length && !DATA.pools.every(p=>p.every(t=>{
-    const stMap=computeStandings();
-    return DATA.matches.filter(m=>m.phase==='pool'&&(m.home===t.id||m.away===t.id)).every(m=>m.played);
-  }))){
-    // Phase de poules — un tableau par poule
-    const stMap=computeStandings();
-    let html='';
-    DATA.pools.forEach((pool,pi)=>{
-      const rows=[...pool].map(t=>stMap[t.id]).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
-      html+=standingsTable(rows, `Poule ${String.fromCharCode(65+pi)}`);
+  const stMap=computeStandings();
+  const poolMatches=DATA.matches.filter(m=>m.phase==='pool');
+  const poolDone=poolMatches.length>0&&poolMatches.every(m=>m.played);
+
+  // ── 1. Classement général (toutes équipes) — comme l'Admin ──
+  const mainIds=new Set();
+  DATA.pools.forEach(pool=>{
+    const rows=[...pool].sort((a,b)=>{
+      const sa=stMap[a.id]||{pts:0,gf:0,ga:0},sb=stMap[b.id]||{pts:0,gf:0,ga:0};
+      return(sb.pts-sa.pts)||((sb.gf-sb.ga)-(sa.gf-sa.ga))||(sb.gf-sa.gf);
     });
-    out.innerHTML = html || '<div class="empty-msg">En attente des poules…</div>';
+    const cutoff=Math.ceil(pool.length/2);
+    rows.slice(0,cutoff).forEach(t=>mainIds.add(t.id));
+  });
+
+  const allTeamsRanked=DATA.teams.map(team=>{
+    const s=stMap[team.id]||{p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0};
+    return{...team,...s,isMain:mainIds.has(team.id)};
+  }).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
+
+  const pW=DATA.cfg.ptsW??3,pD=DATA.cfg.ptsD??1,pL=DATA.cfg.ptsL??0;
+  let html=`<div class="card"><div class="card-hd">🏆 Classement Général</div>`;
+  html+=`<div class="st-row header" style="grid-template-columns:30px 1fr 60px 28px 28px 28px 28px 28px 28px 36px"><span>#</span><span>Équipe</span><span>Phase</span><span>J</span><span>V</span><span>N</span><span>D</span><span>BP</span><span>BC</span><span>Pts</span></div>`;
+  allTeamsRanked.forEach((t,ri)=>{
+    const medal=ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'';
+    const phaseLabel=t.isMain?'🥇 Princ.':'🥈 Consol.';
+    const phaseColor=t.isMain?'var(--gold)':'var(--purple)';
+    html+=`<div class="st-row" style="grid-template-columns:30px 1fr 60px 28px 28px 28px 28px 28px 28px 36px"><span style="font-size:.75rem;font-weight:700">${ri+1}</span><span>${medal} ${t.name}</span><span style="font-size:.6rem;font-weight:700;color:${phaseColor}">${phaseLabel}</span><span>${t.p||0}</span><span>${t.w||0}</span><span>${t.d||0}</span><span>${t.l||0}</span><span>${t.gf||0}</span><span>${t.ga||0}</span><span class="st-pts">${t.pts||0}</span></div>`;
+  });
+  html+=`</div>`;
+
+  // ── 2. Classements par poule (pendant la phase de poules) ──
+  if(!poolDone){
+    let poolHtml='';
+    DATA.pools.forEach((pool,pi)=>{
+      const rows=[...pool].map(t=>stMap[t.id]).filter(Boolean).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
+      poolHtml+=standingsTable(rows,`Poule ${String.fromCharCode(65+pi)}`);
+    });
+    out.innerHTML=html+poolHtml;
     return;
   }
-  // Phase finale ou poules finales (main/consol)
-  const mainMs=DATA.matches.filter(m=>m.phase==='main');
-  const consolMs=DATA.matches.filter(m=>m.phase==='consol');
-  let html='';
-  if(mainMs.length||consolMs.length){
-    const stMap=computeStandings();
-    const mainTeams=[...new Set(mainMs.flatMap(m=>[m.home,m.away]))].map(id=>stMap[id]).filter(Boolean);
-    const consolTeams=[...new Set(consolMs.flatMap(m=>[m.home,m.away]))].map(id=>stMap[id]).filter(Boolean);
-    if(mainTeams.length) html+=standingsTable(mainTeams.sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))), '🥇 Poule Principale');
-    if(consolTeams.length) html+=standingsTable(consolTeams.sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))), '🥈 Poule Consolante');
-  } else {
-    const stMap=computeStandings();
-    const rows=Object.values(stMap).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
-    html=standingsTable(rows, '📊 Classement');
+
+  // ── 3. Classements de phase finale (Principale & Consolante) — après poules ──
+  const mainStMap=computeFinalStandings('main');
+  const consolStMap=computeFinalStandings('consol');
+  const hasMain=Object.keys(mainStMap).length>0;
+  const hasConsol=Object.keys(consolStMap).length>0;
+
+  if(hasMain||hasConsol){
+    if(hasMain){
+      const mainRows=Object.values(mainStMap).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
+      html+=standingsTable(mainRows,'🥇 Poule Principale');
+    }
+    if(hasConsol){
+      const consolRows=Object.values(consolStMap).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
+      html+=standingsTable(consolRows,'🥈 Poule Consolante');
+    }
   }
-  out.innerHTML = html || '<div class="empty-msg">Aucun classement disponible</div>';
+
+  // ── 4. Classement final du tournoi si finales jouées ──
+  const mainFinalMs=DATA.matches.filter(m=>m.phase==='main_final'&&m.played);
+  const mainSmallMs=DATA.matches.filter(m=>m.phase==='main_3rd'&&m.played);
+  const consolFinalMs=DATA.matches.filter(m=>m.phase==='consol_final'&&m.played);
+  const consolSmallMs=DATA.matches.filter(m=>m.phase==='consol_3rd'&&m.played);
+
+  if(mainFinalMs.length||consolFinalMs.length){
+    const finalRanking=[];
+    if(mainFinalMs.length){
+      const mf=mainFinalMs[0];
+      const w=mf.homeScore>mf.awayScore?mf.home:mf.away,l=mf.homeScore>mf.awayScore?mf.away:mf.home;
+      finalRanking.push({place:1,id:w,label:'🥇 1ère place'});
+      finalRanking.push({place:2,id:l,label:'🥈 2ème place'});
+    }
+    if(mainSmallMs.length){
+      const ms=mainSmallMs[0];
+      const w=ms.homeScore>ms.awayScore?ms.home:ms.away,l=ms.homeScore>ms.awayScore?ms.away:ms.home;
+      finalRanking.push({place:3,id:w,label:'🥉 3ème place'});
+      finalRanking.push({place:4,id:l,label:'4ème place'});
+    }
+    if(consolFinalMs.length){
+      const cf=consolFinalMs[0];
+      const w=cf.homeScore>cf.awayScore?cf.home:cf.away,l=cf.homeScore>cf.awayScore?cf.away:cf.home;
+      finalRanking.push({place:finalRanking.length+1,id:w,label:'🏅 1er Consolante'});
+      finalRanking.push({place:finalRanking.length+1,id:l,label:'2e Consolante'});
+    }
+    if(consolSmallMs.length){
+      const cs=consolSmallMs[0];
+      const w=cs.homeScore>cs.awayScore?cs.home:cs.away,l=cs.homeScore>cs.awayScore?cs.away:cs.home;
+      finalRanking.push({place:finalRanking.length+1,id:w,label:'3e Consolante'});
+      finalRanking.push({place:finalRanking.length+1,id:l,label:'4e Consolante'});
+    }
+    if(finalRanking.length){
+      html+=`<div class="card"><div class="card-hd">🏆 Classement Final</div>`;
+      finalRanking.forEach(r=>{
+        const name=teamName(r.id);
+        html+=`<div class="st-row"><span style="font-size:.8rem;font-weight:700">${r.place}</span><span>${name}</span><span style="font-size:.7rem;color:var(--muted)">${r.label}</span></div>`;
+      });
+      html+=`</div>`;
+    }
+  }
+
+  out.innerHTML=html||'<div class="empty-msg">Aucun classement disponible</div>';
 }
 
-// ── RENDU : Onglet Planning (tous les matchs, triés par heure) ─────────────
+// ── RENDU : Onglet Planning — même règle que l'Admin ───────────────────────
+// Les matchs de phase finale n'apparaissent que lorsque les poules sont terminées.
 function renderPlanning(){
   const out=document.getElementById('planning-out');
-  // Peupler le select la première fois (et à chaque appel si les équipes changent)
+  const poolMatches=DATA.matches.filter(m=>m.phase==='pool');
+  const poolDone=poolMatches.length>0&&poolMatches.every(m=>m.played);
+
+  // Peupler le select avec les équipes visibles selon poolDone
   const sel=document.getElementById('planning-team-filter');
   if(sel){
     const prev=sel.value;
-    const teams=[...new Set(DATA.matches.flatMap(m=>[m.home,m.away]).filter(id=>id&&id!=='TBD'))];
+    // Même logique que l'Admin : n'exposer que les équipes des matchs visibles
+    const visibleMatches=DATA.matches.filter(m=>m.time!=null&&(m.phase==='pool'||poolDone));
+    const teams=[...new Set(visibleMatches.flatMap(m=>[m.home,m.away]).filter(id=>id&&id!=='TBD'))];
     teams.sort((a,b)=>(DATA.teams.find(t=>t.id===a)?.name||a).localeCompare(DATA.teams.find(t=>t.id===b)?.name||b));
     sel.innerHTML='<option value="">📋 Toutes les équipes</option>';
     teams.forEach(id=>{ const n=teamName(id); sel.innerHTML+=`<option value="${id}"${id===prev?' selected':''}>${n}</option>`; });
   }
   const filterTeam=sel?sel.value:'';
-  let sorted=[...DATA.matches].filter(m=>m.time!=null).sort((a,b)=>a.time-b.time);
+
+  // Phase de poules uniquement si pas encore terminée
+  let sorted=DATA.matches.filter(m=>m.time!=null&&(m.phase==='pool'||poolDone))
+    .sort((a,b)=>a.time-b.time);
   if(filterTeam) sorted=sorted.filter(m=>m.home===filterTeam||m.away===filterTeam);
+
   const title=filterTeam?`📋 Planning — ${teamName(filterTeam)}`:'📋 Planning complet';
   let html=`<div class="card"><div class="card-hd">${title}</div>`;
-  sorted.forEach(m=>{ html+=matchRow(m); });
+
+  // Séparer poules et phase finale pour affichage structuré (comme Admin)
+  const poolSorted=sorted.filter(m=>m.phase==='pool');
+  const finalSorted=sorted.filter(m=>m.phase!=='pool');
+
+  poolSorted.forEach(m=>{ html+=matchRow(m); });
+
+  if(poolDone&&finalSorted.length){
+    html+=`</div><div class="card"><div class="card-hd">🏆 Phase Finale</div>`;
+    finalSorted.forEach(m=>{ html+=matchRow(m); });
+  }
+
   html+='</div>';
-  out.innerHTML = sorted.length ? html : '<div class="empty-msg">Aucun match pour cette équipe</div>';
+  out.innerHTML=sorted.length?html:'<div class="empty-msg">Aucun match disponible</div>';
 }
 
-// ── RENDU : Onglet Arbitres ──────────────────────────────────────────────
+// ── RENDU : Onglet Arbitres — même règle que l'Admin ───────────────────────
+// Les matchs de phase finale n'apparaissent qu'une fois les poules terminées.
 function renderArbitres(){
   const out=document.getElementById('arbitres-out');
-  // Peupler le select des arbitres
+  const poolMatches=DATA.matches.filter(m=>m.phase==='pool');
+  const poolDone=poolMatches.length>0&&poolMatches.every(m=>m.played);
+
+  // N'inclure les matchs hors poules que si poules terminées — identique à l'Admin
+  const visibleMatches=DATA.matches.filter(m=>
+    m.referee&&m.time!=null&&m.home!=='TBD'&&m.away!=='TBD'&&
+    (m.phase==='pool'||poolDone)
+  );
+
   const sel=document.getElementById('arbitres-ref-filter');
   if(sel){
     const prev=sel.value;
-    const refs=[...new Set(DATA.matches.filter(m=>m.referee&&m.time!=null).map(m=>m.referee))].sort();
+    const refs=[...new Set(visibleMatches.map(m=>m.referee))].sort();
     sel.innerHTML='<option value="">⚖️ Tous les arbitres</option>';
     refs.forEach(r=>{ sel.innerHTML+=`<option value="${r}"${r===prev?' selected':''}>${r}</option>`; });
   }
   const filterRef=sel?sel.value:'';
   const byRef={};
-  DATA.matches.filter(m=>m.referee && m.time!=null && (!filterRef||m.referee===filterRef)).forEach(m=>{
+  visibleMatches.filter(m=>!filterRef||m.referee===filterRef).forEach(m=>{
     if(!byRef[m.referee]) byRef[m.referee]=[];
     byRef[m.referee].push(m);
   });
@@ -370,7 +494,7 @@ function renderArbitres(){
     matches.forEach(m=>{ html+=matchRow(m); });
     html+='</div>';
   });
-  out.innerHTML = html || "<div class=\"empty-msg\">Aucune affectation d'arbitre</div>";
+  out.innerHTML=html||'<div class="empty-msg">Aucune affectation d'arbitre</div>';
 }
 
 // ── RENDU : Chronomètre (lecture seule — reflète l'état Admin en temps réel) ──
