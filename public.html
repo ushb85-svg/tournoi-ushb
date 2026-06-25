@@ -141,7 +141,7 @@ body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);
 // Les données sont lues exclusivement depuis tournament-data.json (polling 8s).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const POLL_INTERVAL_MS = 8000;
+const POLL_INTERVAL_MS = 5000; // réduit de 8s à 5s pour meilleure réactivité
 let DATA = null; // dernier état reçu : {cfg, teams, pools, matches, arbitres, finalsValidated, tournamentValidated, ts}
 let lastFetchOk = false;
 
