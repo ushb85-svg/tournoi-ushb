@@ -52,6 +52,10 @@ body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);
 .ticker-inner{display:inline-block}
 .chrono-box{text-align:center;padding:1.5rem 1rem}
 .chrono-time{font-family:'Bebas Neue',sans-serif;font-size:3.2rem;letter-spacing:.04em;color:var(--acc)}
+.chrono-time.running{color:#4ade80}
+.chrono-time.urgent{color:#facc15;animation:blink .8s infinite}
+.chrono-time.finished{color:#f87171;animation:blink .5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 .chrono-label{font-size:.8rem;color:var(--muted);margin-top:.3rem}
 .fullscreen-btn{position:fixed;bottom:1rem;right:1rem;z-index:60;background:var(--acc);color:#fff;
   border:none;border-radius:50px;padding:.7rem 1.1rem;font-size:.78rem;font-weight:700;box-shadow:0 3px 14px rgba(0,0,0,.25)}
@@ -369,47 +373,70 @@ function renderArbitres(){
   out.innerHTML = html || "<div class=\"empty-msg\">Aucune affectation d'arbitre</div>";
 }
 
-// ── RENDU : Chronomètre (lecture seule — reflète l'état publié, pas de contrôle) ──
-function renderChrono(){
+// ── RENDU : Chronomètre (lecture seule — reflète l'état Admin en temps réel) ──
+// Source principale : BroadcastChannel 'hb_chrono_sync' (émis chaque seconde par l'Admin).
+// Fallback : chronoState publié sur GitHub (polling 5s), utilisé au chargement ou
+//            si l'Admin est sur un réseau différent (BroadcastChannel limité au même domaine).
+
+// Fonction utilitaire partagée : applique un état chrono sur les éléments DOM
+function _applyChronoState(remaining, total, running, nextMsg){
   const dispEl=document.getElementById('chrono-display');
   const labelEl=document.getElementById('chrono-label');
+  if(!dispEl||!labelEl) return;
+  const isFinished=(!running && remaining===0 && total>0);
+  const isUrgent=(running && remaining>0 && remaining<60);
+  if(nextMsg){
+    dispEl.textContent='Place aux prochains matchs';
+    dispEl.className='chrono-time';
+    labelEl.textContent='';
+  } else if(isFinished){
+    dispEl.textContent='00:00';
+    dispEl.className='chrono-time finished';
+    labelEl.textContent='⏹ Fin du chrono';
+  } else if(total===0 && !running){
+    dispEl.textContent='--:--';
+    dispEl.className='chrono-time';
+    labelEl.textContent='En attente du chrono Admin…';
+  } else {
+    const m=Math.floor(remaining/60), s=remaining%60;
+    dispEl.textContent=`${pad(m)}:${pad(s)}`;
+    dispEl.className='chrono-time'+(running&&!isUrgent?' running':'')+(isUrgent?' urgent':'');
+    labelEl.textContent=running?'⏱ Match en cours':(remaining>0?'⏸ Pause':'');
+  }
+}
 
-  // Si l'Admin a publié un état chrono, l'utiliser comme source unique
-  if(DATA.chronoState && DATA.chronoState.display && DATA.chronoState.display!=='--:--'){
-    const cs=DATA.chronoState;
-    if(cs.nextMsg){
-      dispEl.textContent='Place aux prochains matchs';
-      dispEl.className='chrono-time';
-      labelEl.textContent='';
-    } else if(cs.running){
-      // Compenser l'écoulement depuis la publication (DATA.ts ou cs.ts)
-      const publishedAt=cs.ts||DATA.ts||Date.now();
-      const elapsedSec=Math.round((Date.now()-publishedAt)/1000);
-      // Extraire les secondes depuis le format MM:SS
-      const parts=cs.display.split(':').map(Number);
-      const totalSec=(parts[0]||0)*60+(parts[1]||0);
-      const remaining=Math.max(0, totalSec-elapsedSec);
-      const m=Math.floor(remaining/60), s=remaining%60;
-      dispEl.textContent=`${pad(m)}:${pad(s)}`;
-      dispEl.className='chrono-time running';
-      labelEl.textContent='⏱ Chrono Admin en cours';
-    } else if(cs.finished){
-      dispEl.textContent='00:00';
-      dispEl.className='chrono-time finished';
-      labelEl.textContent='⏹ Fin du chrono';
-    } else {
-      dispEl.textContent=cs.display;
-      dispEl.className='chrono-time';
-      labelEl.textContent='⏸ Chrono Admin (en pause)';
-    }
+// BroadcastChannel : écoute l'état exact émis par l'Admin chaque seconde (même domaine/réseau)
+let _bcChronoActive=false;
+try{
+  const _pubBC=new BroadcastChannel('hb_chrono_sync');
+  _pubBC.addEventListener('message', e=>{
+    if(!e.data||e.data.type!=='chrono') return;
+    _bcChronoActive=true; // BC disponible : on l'utilise comme source principale
+    _applyChronoState(e.data.remaining, e.data.total, e.data.running, e.data.nextMsg||false);
+  });
+}catch(err){ /* BroadcastChannel non supporté — fallback GitHub uniquement */ }
+
+// renderChrono : utilisé au chargement (DATA disponible) et comme fallback si BC absent
+function renderChrono(){
+  if(_bcChronoActive) return; // BC actif : pas besoin de recalculer, déjà mis à jour
+  if(!DATA||!DATA.chronoState) return;
+  const cs=DATA.chronoState;
+  if(!cs.display || cs.display==='--:--'){
+    // Aucun chrono actif publié
+    const dispEl=document.getElementById('chrono-display');
+    const labelEl=document.getElementById('chrono-label');
+    if(dispEl){ dispEl.textContent='--:--'; dispEl.className='chrono-time'; }
+    if(labelEl) labelEl.textContent='En attente du chrono Admin…';
     return;
   }
-
-  // Fallback : heure courante si aucun état chrono Admin disponible
-  const now=new Date();
-  dispEl.textContent=`${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  dispEl.className='chrono-time';
-  labelEl.textContent='Heure actuelle — aucun chrono actif';
+  // Recalcul depuis le snapshot GitHub avec compensation de dérive
+  const publishedAt=cs.ts||DATA.ts||Date.now();
+  const elapsedSec=Math.floor((Date.now()-publishedAt)/1000);
+  const parts=(cs.display||'0:0').split(':').map(Number);
+  const snapshotSec=(parts[0]||0)*60+(parts[1]||0);
+  const remaining=cs.running ? Math.max(0, snapshotSec-elapsedSec) : snapshotSec;
+  const total=cs.total||snapshotSec||0;
+  _applyChronoState(remaining, total, cs.running||false, cs.nextMsg||false);
 }
 
 function renderAll(){
