@@ -5339,6 +5339,8 @@ try{ window._tickerBC = new BroadcastChannel('hb_ticker_sync'); }catch(e){}
   function _render(){
     const d=disp();if(!d)return;
     d.textContent=_fmt(_remaining);
+    // Exposer l'état courant pour _publishTournamentData (hors IIFE)
+    window._chronoSnapshot={remaining:_remaining,total:_total,running:_running};
     const isFinished=(!_running&&_remaining===0&&_total>0);
     const isUrgent=_running&&_remaining>0&&_remaining<60;
     d.className='chrono-display'+(_running&&!isUrgent?' running':'')+(isUrgent?' urgent':'')+(isFinished?' finished':'');
@@ -5629,12 +5631,16 @@ async function _doPublishTournamentData(){
   const _chronoRunning=_chronoEl&&_chronoEl.classList.contains('running');
   const _chronoFinished=_chronoEl&&_chronoEl.classList.contains('finished');
   const _chronoNextMsg=_chronoEl&&_chronoEl.textContent==='Place aux prochains matchs';
+  // Extraire remaining et total depuis les variables internes du chrono pour le fallback Public
+  // Ces valeurs sont exposées par l'IIFE du chrono via window._chronoSnapshot
+  const _snap=window._chronoSnapshot||{};
   const payload={
     cfg:S.cfg, teams:S.teams, pools:S.pools, matches:S.matches,
     arbitres:S.arbitres, finalsValidated:S.finalsValidated,
     tournamentValidated:S.tournamentValidated, ts:Date.now(),
     tickerMsg:_tickerMsg,
-    chronoState:{display:_chronoText, running:_chronoRunning, finished:_chronoFinished, nextMsg:_chronoNextMsg, ts:Date.now()}
+    chronoState:{display:_chronoText, running:_chronoRunning, finished:_chronoFinished, nextMsg:_chronoNextMsg,
+      remaining:_snap.remaining||0, total:_snap.total||0, ts:Date.now()}
   };
   const contentB64=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
 
