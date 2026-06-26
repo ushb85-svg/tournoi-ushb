@@ -153,6 +153,52 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .chrono-btn.reset{background:rgba(248,113,113,.12);color:#f87171}
 .chrono-btn.reset:hover{background:rgba(248,113,113,.25)}
 .chrono-sep{width:1px;height:20px;background:#333;flex-shrink:0}
+
+/* ═══ BANDEAU 3 CARTES AU-DESSUS DE LA NAV ═══ */
+.action-bar{
+  display:flex;gap:.6rem;padding:.5rem .75rem;
+  background:var(--s1,#0d0d0d);border-bottom:1px solid #222;
+  align-items:stretch;
+}
+.action-card{
+  flex:1;min-width:0;
+  display:flex;align-items:center;justify-content:center;
+  gap:.5rem;
+  background:#111;border:1px solid #2a2a2a;border-radius:8px;
+  padding:.42rem .75rem;
+  font-size:.78rem;font-weight:700;
+  white-space:nowrap;overflow:hidden;
+  min-height:42px;
+  box-sizing:border-box;
+}
+/* Carte QR Code — bouton cliquable */
+.action-card.card-qr{
+  cursor:pointer;color:var(--text,#e5e5e5);border:none;
+  background:linear-gradient(135deg,#1e7fc4,#1463a0);
+  letter-spacing:.04em;
+  transition:filter .15s;
+}
+.action-card.card-qr:hover{filter:brightness(1.12)}
+/* Carte Publier — bouton cliquable */
+.action-card.card-publish{
+  cursor:pointer;color:#fff;border:none;
+  background:var(--acc,#d42e20);
+  letter-spacing:.04em;
+  transition:filter .15s;
+}
+.action-card.card-publish:hover{filter:brightness(1.12)}
+.action-card.card-publish:disabled{opacity:.6;cursor:default;filter:none}
+/* Carte Chrono — conteneur fixe même dimensions */
+.action-card.card-chrono{
+  gap:.45rem;
+  background:#111;border-color:#2a2a2a;
+}
+/* Adapte nav-chrono dans la carte : retire les marges/padding de la nav */
+.action-card.card-chrono .nav-chrono{
+  display:flex;align-items:center;gap:.45rem;
+  padding:0;margin:0;background:transparent;border:none;border-radius:0;
+}
+
 /* ═══ CHRONOMÈTRE ÉCRAN D'AFFICHAGE ═══ */
 .ds-chrono-wrap{
   display:flex;align-items:center;gap:.75rem;
@@ -1316,20 +1362,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   <div class="nav-tab" data-page="display">📺 Affichage</div>
   <div class="nav-tab locked" data-page="planning">📅 Planning</div>
   <div class="nav-tab locked" data-page="arbitres-planning">⚖️ Planning arbitres</div>
-  <button id="btn-share-live" onclick="openShareLivePanel()" style="margin-left:auto;margin-right:.5rem;padding:.5rem 1rem;font-size:.78rem;font-weight:700;letter-spacing:.04em;background:linear-gradient(135deg,#1e7fc4,#1463a0);color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:.4rem;white-space:nowrap">📱 QR Code et lien</button>
-  <button id="btn-publish-live" onclick="publishLiveNow()" style="margin-right:.75rem;padding:.5rem 1rem;font-size:.78rem;font-weight:700;letter-spacing:.04em;background:var(--acc,#d42e20);color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:.4rem;white-space:nowrap">📤 Publier la diffusion</button>
-  <!-- ═══ CHRONOMÈTRE ═══ -->
-  <div class="nav-chrono" title="Chronomètre de match">
-    <div class="chrono-display" id="chrono-display">--:--</div>
-    <div class="chrono-sep"></div>
-    <input class="chrono-input" id="chrono-input" type="number" min="1" max="99" value="20" title="Durée en minutes">
-    <span style="font-size:.65rem;color:var(--muted);flex-shrink:0">min</span>
-    <button class="chrono-btn start" id="chrono-btn-start" onclick="chronoStart()" title="Démarrer">▶</button>
-    <button class="chrono-btn pause" id="chrono-btn-pause" onclick="chronoPause()" title="Pause / Reprendre" style="display:none">⏸</button>
-    <button class="chrono-btn reset" onclick="chronoReset()" title="Réinitialiser">↺</button>
-    <button class="chrono-btn" onclick="chronoTest()" title="Tester la sonnerie" style="font-size:.65rem">🔔</button>
-  </div>
-  <div class="nav-save">
+  <div class="nav-save" style="margin-left:auto">
     <button class="btn btn-secondary btn-sm" onclick="exportJSON()" title="Exporter le tournoi en fichier .json" style="padding:.32rem .7rem;font-size:.7rem">💾 Exporter</button>
     <label class="btn btn-secondary btn-sm" title="Importer un fichier tournoi .json" style="padding:.32rem .7rem;font-size:.7rem;cursor:pointer;margin:0">
       📂 Importer
@@ -1339,6 +1372,35 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <span class="save-label" id="save-label">Non sauvegardé</span>
   </div>
 </nav>
+
+<!-- ═══ BANDEAU 3 CARTES : QR Code / Publier / Chronomètre ═══ -->
+<div class="action-bar">
+
+  <!-- Carte 1 : QR Code et lien -->
+  <button class="action-card card-qr" id="btn-share-live" onclick="openShareLivePanel()">
+    📱 QR Code et lien
+  </button>
+
+  <!-- Carte 2 : Publier la diffusion -->
+  <button class="action-card card-publish" id="btn-publish-live" onclick="publishLiveNow()">
+    📤 Publier la diffusion
+  </button>
+
+  <!-- Carte 3 : Chronomètre -->
+  <div class="action-card card-chrono">
+    <div class="nav-chrono" title="Chronomètre de match">
+      <div class="chrono-display" id="chrono-display">--:--</div>
+      <div class="chrono-sep"></div>
+      <input class="chrono-input" id="chrono-input" type="number" min="1" max="99" value="20" title="Durée en minutes">
+      <span style="font-size:.65rem;color:var(--muted);flex-shrink:0">min</span>
+      <button class="chrono-btn start" id="chrono-btn-start" onclick="chronoStart()" title="Démarrer">▶</button>
+      <button class="chrono-btn pause" id="chrono-btn-pause" onclick="chronoPause()" title="Pause / Reprendre" style="display:none">⏸</button>
+      <button class="chrono-btn reset" onclick="chronoReset()" title="Réinitialiser">↺</button>
+      <button class="chrono-btn" onclick="chronoTest()" title="Tester la sonnerie" style="font-size:.65rem">🔔</button>
+    </div>
+  </div>
+
+</div>
 
 <!-- ═══════════ PAGE CONFIG ═══════════ -->
 <div class="page active" id="setup">
