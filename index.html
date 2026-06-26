@@ -5647,7 +5647,7 @@ async function _doPublishTournamentData(){
   try{
     // 1. Récupérer le sha actuel du fichier (s'il existe déjà)
     let sha=null;
-    const getResp=await fetch(apiUrl,{headers:{Authorization:`token ${cfg.token}`}});
+    const getResp=await fetch(apiUrl+'?ref=data',{headers:{Authorization:`token ${cfg.token}`}});
     if(getResp.ok){
       const getData=await getResp.json();
       sha=getData.sha;
@@ -5659,6 +5659,7 @@ async function _doPublishTournamentData(){
       body:JSON.stringify({
         message:'Mise à jour diffusion en direct',
         content:contentB64,
+        branch:'data',
         ...(sha?{sha}:{})
       })
     });
