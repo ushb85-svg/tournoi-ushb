@@ -222,7 +222,7 @@ let REPO_CFG=null;
 
 function rawUrl(){
   // raw.githubusercontent.com : pas de quota, pas de CORS, JSON direct
-  return `https://raw.githubusercontent.com/${REPO_CFG.owner}/${REPO_CFG.repo}/main/tournament-data.json?t=${Date.now()}`;
+  return `https://raw.githubusercontent.com/${REPO_CFG.owner}/${REPO_CFG.repo}/data/tournament-data.json?t=${Date.now()}`;
 }
 
 async function fetchData(){
