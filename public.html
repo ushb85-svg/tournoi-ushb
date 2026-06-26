@@ -59,6 +59,43 @@ body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);
 .chrono-label{font-size:.8rem;color:var(--muted);margin-top:.3rem}
 .fullscreen-btn{position:fixed;bottom:1rem;right:1rem;z-index:60;background:var(--acc);color:#fff;
   border:none;border-radius:50px;padding:.7rem 1.1rem;font-size:.78rem;font-weight:700;box-shadow:0 3px 14px rgba(0,0,0,.25)}
+/* ── Styles onglet Direct — calqués sur l'onglet Affichage Admin ── */
+.terrain-sep{font-size:.72rem;font-weight:700;letter-spacing:.06em;color:var(--acc);text-transform:uppercase;
+  padding:.35rem .4rem .2rem;border-bottom:2px solid var(--acc);margin:.5rem 0 .25rem;opacity:.8}
+.match-row{display:flex;align-items:center;gap:.5rem;padding:.55rem .3rem;border-bottom:1px solid var(--border);font-size:.83rem}
+.match-row:last-child{border-bottom:none}
+.match-row.islive{background:rgba(212,46,32,.05);border-left:3px solid var(--acc)}
+.match-row.upcoming{border-left:3px solid rgba(196,154,16,.4)}
+.match-row.done{background:rgba(32,195,104,.03);border-left:3px solid rgba(32,195,104,.3)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--acc);flex-shrink:0;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.m-time-col{font-family:"Bebas Neue",sans-serif;font-size:.9rem;letter-spacing:.04em;color:var(--muted);flex-shrink:0;min-width:38px}
+.m-center{flex:1;min-width:0}
+.m-teams-row{display:flex;align-items:center;gap:.35rem;flex-wrap:nowrap}
+.m-team{flex:1;font-weight:600;font-size:.84rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m-team.right{text-align:right}
+.m-team.won{color:var(--green);font-weight:800}
+.m-vs{flex-shrink:0;font-size:.75rem;font-weight:700;color:var(--muted)}
+.m-vs.live-ind{color:var(--acc)}
+.m-score-final{flex-shrink:0;font-family:"Bebas Neue",sans-serif;font-size:1.05rem;color:var(--acc);min-width:52px;text-align:center}
+.m-state-col{flex-shrink:0;font-size:.6rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;min-width:52px;text-align:right}
+.live-col{color:var(--acc)}
+.next-col{color:var(--gold)}
+.done-col{color:var(--muted)}
+.ref-tag{font-size:.68rem;color:var(--muted);margin-top:.1rem;font-style:italic}
+.ref-tag.live-ref{color:rgba(212,46,32,.75)}
+/* ── Styles onglet Classement — finales ── */
+.st-final-row{display:flex;align-items:center;gap:.4rem;padding:.45rem .3rem;border-bottom:1px solid var(--border);font-size:.83rem}
+.st-final-row:last-child{border-bottom:none}
+.st-final-row.played{background:rgba(32,195,104,.04)}
+.st-final-row.tbd{opacity:.4}
+.st-final-time{flex-shrink:0;font-family:"Bebas Neue",sans-serif;font-size:.85rem;color:var(--muted);min-width:36px}
+.st-final-team{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-final-team.right{text-align:right}
+.st-final-team.won{color:var(--green);font-weight:800}
+.st-final-score{flex-shrink:0;font-family:"Bebas Neue",sans-serif;font-size:1.1rem;color:var(--acc);min-width:54px;text-align:center}
+.st-sep{height:1px;background:var(--gold);opacity:.3;margin:.2rem 0}
+.st-main{background:rgba(245,194,66,.05)}
 .badge{display:inline-block;font-size:.55rem;font-weight:700;padding:.1rem .35rem;border-radius:4px;margin-left:.3rem}
 .b-main{background:rgba(196,154,16,.15);color:var(--gold)}
 .b-consol{background:rgba(159,125,245,.15);color:var(--purple)}
@@ -213,35 +250,129 @@ function updateLiveDot(ok){
   }
 }
 
-// ── RENDU : Onglet Direct (matchs en cours/à venir + derniers résultats) ───────
+// ── RENDU : Onglet Direct — calqué sur renderDisplay() Admin ────────────────
+// Même logique : passe 1 = matchs EN COURS par terrain, passe 2 = SUIVANT par terrain,
+// puis résultats récents. Source : DATA (publié par Admin via GitHub).
 function renderLive(){
   const now=new Date();
   const cur=now.getHours()*60+now.getMinutes();
-  const isLive=m=>!m.played && m.time!=null && cur>=m.time && cur<m.time+DATA.cfg.dur;
+  const isLiveM=m=>!m.played&&m.time!=null&&cur>=m.time&&cur<m.time+DATA.cfg.dur;
 
-  const upcoming=DATA.matches.filter(m=>!m.played && m.time!=null && m.home!=='TBD' && m.away!=='TBD')
-    .sort((a,b)=>(a.time??999999)-(b.time??999999));
+  // Terrains actifs (matchs non joués ou en cours, hors TBD) — identique Admin
+  const fieldNums=[...new Set(
+    DATA.matches.filter(m=>!m.played&&m.time!=null&&m.home!=='TBD'&&m.away!=='TBD').map(m=>m.field)
+  )].sort((a,b)=>a-b);
+
   let uh='';
-  upcoming.slice(0,12).forEach(m=>{
-    const live=isLive(m);
-    uh+=matchRow(m, live?' style="background:rgba(212,46,32,.06)"':'');
-  });
-  document.getElementById('live-upcoming').innerHTML = uh || '<div class="empty-msg">Aucun match à venir</div>';
 
-  const done=DATA.matches.filter(m=>m.played).sort((a,b)=>(b.time??0)-(a.time??0));
-  let dh='';
-  done.slice(0,10).forEach(m=>{ dh+=matchRow(m); });
-  document.getElementById('live-done').innerHTML = dh || '<div class="empty-msg">Aucun résultat encore</div>';
-
-  // Ticker — priorité au message personnalisé de l'Admin (DATA.tickerMsg)
-  // Si l'Admin a saisi un message dans le bandeau, il écrase les résultats automatiques.
-  const ticker=document.getElementById('ticker-text');
-  if(DATA.tickerMsg && DATA.tickerMsg.trim()){
-    ticker.textContent = DATA.tickerMsg.trim();
-  } else if(done.length){
-    ticker.textContent = done.slice(0,5).map(m=>`${teamName(m.home)} ${m.homeScore}–${m.awayScore} ${teamName(m.away)}`).join('   ·   ');
+  if(fieldNums.length===0){
+    // Aucun match planifié non joué : vérifier matchs en cours
+    const liveOnly=DATA.matches.filter(m=>isLiveM(m)&&m.home!=='TBD'&&m.away!=='TBD');
+    if(liveOnly.length){
+      const livFields=[...new Set(liveOnly.map(m=>m.field))].sort((a,b)=>a-b);
+      livFields.forEach(f=>{
+        uh+=`<div class="terrain-sep">🏟 Terrain ${f}</div>`;
+        liveOnly.filter(m=>m.field===f).forEach(m=>{
+          const refText=m.referee?`<div class="ref-tag">👨‍⚖️ ${m.referee}</div>`:'';
+          uh+=`<div class="match-row islive">
+            <div class="live-dot"></div>
+            <div class="m-time-col">${m2t(m.time)}</div>
+            <div class="m-center">
+              <div class="m-teams-row">
+                <span class="m-team">${teamName(m.home)}</span>
+                <span class="m-vs live-ind">🔴</span>
+                <span class="m-team right">${teamName(m.away)}</span>
+              </div>${refText}
+            </div>
+            <div class="m-state-col live-col">EN COURS</div>
+          </div>`;
+        });
+      });
+    } else {
+      uh=`<div class="empty-msg">Tous les matchs sont terminés</div>`;
+    }
   } else {
-    ticker.textContent = `🏐 ${DATA.cfg.name||'Tournoi'} — Suivez le direct ici !`;
+    // Passe 1 — matchs EN COURS, terrain par terrain
+    fieldNums.forEach(f=>{
+      const livOnField=DATA.matches.filter(m=>isLiveM(m)&&m.field===f&&m.home!=='TBD'&&m.away!=='TBD');
+      if(!livOnField.length) return;
+      uh+=`<div class="terrain-sep">🏟 Terrain ${f}</div>`;
+      livOnField.forEach(m=>{
+        const refText=m.referee?`<div class="ref-tag live-ref">👨‍⚖️ ${m.referee}</div>`:'';
+        uh+=`<div class="match-row islive">
+          <div class="live-dot"></div>
+          <div class="m-time-col">${m2t(m.time)}</div>
+          <div class="m-center">
+            <div class="m-teams-row">
+              <span class="m-team">${teamName(m.home)}</span>
+              <span class="m-vs live-ind">🔴</span>
+              <span class="m-team right">${teamName(m.away)}</span>
+            </div>${refText}
+          </div>
+          <div class="m-state-col live-col">EN COURS</div>
+        </div>`;
+      });
+    });
+    // Passe 2 — prochain match par terrain (1 seul par terrain)
+    fieldNums.forEach(f=>{
+      const nextOnField=DATA.matches.filter(m=>!m.played&&m.time!=null&&m.field===f&&m.home!=='TBD'&&m.away!=='TBD'&&!isLiveM(m))
+        .sort((a,b)=>a.time-b.time).slice(0,1);
+      if(!nextOnField.length) return;
+      uh+=`<div class="terrain-sep">🏟 Terrain ${f}</div>`;
+      nextOnField.forEach(m=>{
+        const refText=m.referee?`<div class="ref-tag">👨‍⚖️ ${m.referee}</div>`:'';
+        uh+=`<div class="match-row upcoming">
+          <div class="m-time-col">${m2t(m.time)}</div>
+          <div class="m-center">
+            <div class="m-teams-row">
+              <span class="m-team">${teamName(m.home)}</span>
+              <span class="m-vs">vs</span>
+              <span class="m-team right">${teamName(m.away)}</span>
+            </div>${refText}
+          </div>
+          <div class="m-state-col next-col">SUIVANT</div>
+        </div>`;
+      });
+    });
+    if(!uh) uh=`<div class="empty-msg">Aucun match planifié</div>`;
+  }
+
+  // Résultats récents — groupés par terrain, 4 derniers
+  const done=DATA.matches.filter(m=>m.played).sort((a,b)=>b.time-a.time).slice(0,4);
+  let dh='';
+  if(done.length){
+    const doneFields=[...new Set(done.map(m=>m.field))].sort((a,b)=>a-b);
+    doneFields.forEach(f=>{
+      dh+=`<div class="terrain-sep">🏟 Terrain ${f}</div>`;
+      done.filter(m=>m.field===f).forEach(m=>{
+        const hW=m.homeScore>m.awayScore;
+        dh+=`<div class="match-row done">
+          <div class="m-time-col">${m2t(m.time)}</div>
+          <div class="m-center">
+            <div class="m-teams-row">
+              <span class="m-team${hW?' won':''}">${teamName(m.home)}</span>
+              <span class="m-score-final">${m.homeScore} – ${m.awayScore}</span>
+              <span class="m-team right${!hW?' won':''}">${teamName(m.away)}</span>
+            </div>
+          </div>
+          <div class="m-state-col done-col">T${m.field}</div>
+        </div>`;
+      });
+    });
+  }
+  if(!dh) dh=`<div class="empty-msg">Aucun résultat encore</div>`;
+
+  document.getElementById('live-upcoming').innerHTML=uh;
+  document.getElementById('live-done').innerHTML=dh;
+
+  // Ticker — message Admin prioritaire (identique Admin)
+  const ticker=document.getElementById('ticker-text');
+  if(DATA.tickerMsg&&DATA.tickerMsg.trim()){
+    ticker.textContent=DATA.tickerMsg.trim();
+  } else if(done.length){
+    ticker.textContent=done.slice(0,5).map(m=>`${teamName(m.home)} ${m.homeScore}–${m.awayScore} ${teamName(m.away)}`).join('   ·   ');
+  } else {
+    ticker.textContent=`🏐 ${DATA.cfg.name||'Tournoi'} — Suivez le direct ici !`;
   }
 }
 
@@ -263,8 +394,7 @@ function matchRow(m, extraStyle=''){
   </div>`;
 }
 
-// ── RENDU : Onglet Classements — logique identique à l'Admin ────────────────
-// computeStandings : classement de poules (matchs phase=pool uniquement)
+// ── CALCULS DE CLASSEMENT — copie exacte de l'Admin ─────────────────────────
 function computeStandings(){
   const m={};
   DATA.teams.forEach(t=>m[t.id]={id:t.id,name:t.name,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0});
@@ -280,7 +410,6 @@ function computeStandings(){
   return m;
 }
 
-// computeFinalStandings : classement d'une phase finale (main ou consol) — copié de l'Admin
 function computeFinalStandings(phase){
   const m={};
   const phaseMs=DATA.matches.filter(x=>x.phase===phase);
@@ -300,122 +429,110 @@ function computeFinalStandings(phase){
   return m;
 }
 
-// Tableau de classement simple (poules)
-function standingsTable(rows, title){
-  let h=`<div class="card"><div class="card-hd">${title}</div>`;
-  h+=`<div class="st-row header"><span>#</span><span>Équipe</span><span>J</span><span>V</span><span>N</span><span>D</span><span>BP</span><span>BC</span><span>Pts</span></div>`;
-  rows.forEach((s,i)=>{
-    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
-    h+=`<div class="st-row" style="grid-template-columns:24px 1fr 28px 28px 28px 28px 28px 28px 36px"><span>${medal}</span><span>${s.name}</span><span>${s.p}</span><span>${s.w}</span><span>${s.d}</span><span>${s.l}</span><span>${s.gf}</span><span>${s.ga}</span><span class="st-pts">${s.pts}</span></div>`;
-  });
-  h+=`</div>`;
-  return h;
-}
-
+// ── RENDU : Onglet Classement — calqué sur renderDisplay() Admin ─────────────
+// 3 phases identiques à l'Admin :
+//   Phase 1 (poules en cours)  → classement par poule
+//   Phase 2 (phase finale)     → Principale + Consolante
+//   Phase 3 (finales terminées)→ résultats des 4 finales
 function renderStandings(){
   const out=document.getElementById('standings-out');
-  const stMap=computeStandings();
+  if(!DATA||!DATA.matches) return;
+
+  // ── Variables d'état identiques à renderDisplay() Admin ──
   const poolMatches=DATA.matches.filter(m=>m.phase==='pool');
-  const poolDone=poolMatches.length>0&&poolMatches.every(m=>m.played);
+  const finalMatches=DATA.matches.filter(m=>m.phase==='main'||m.phase==='consol'||m.phase==='main_final'||m.phase==='main_3rd'||m.phase==='consol_final'||m.phase==='consol_3rd');
+  const poolDone=poolMatches.every(m=>m.played);
 
-  // ── 1. Classement général (toutes équipes) — comme l'Admin ──
-  const mainIds=new Set();
-  DATA.pools.forEach(pool=>{
-    const rows=[...pool].sort((a,b)=>{
-      const sa=stMap[a.id]||{pts:0,gf:0,ga:0},sb=stMap[b.id]||{pts:0,gf:0,ga:0};
-      return(sb.pts-sa.pts)||((sb.gf-sb.ga)-(sa.gf-sa.ga))||(sb.gf-sa.gf);
+  const _finalPhases=['main_final','main_3rd','consol_final','consol_3rd'];
+  const _phasesPresent=_finalPhases.filter(ph=>DATA.matches.some(m=>m.phase===ph));
+  const _specialDone=_phasesPresent.length>0&&
+    _phasesPresent.every(ph=>DATA.matches.filter(m=>m.phase===ph).every(m=>m.played&&m.homeScore!=null&&m.awayScore!=null));
+  const _finalsToDisplay=_specialDone||(DATA.finalsValidated===true);
+
+  let sh='';
+
+  // ══ Phase 3 : Finales terminées ══
+  if(_finalsToDisplay){
+    function finalMatchHTML(m){
+      if(!m) return `<div class="st-final-row tbd"><span>—</span><span>? – ?</span><span>—</span></div>`;
+      const hW=m.played&&m.homeScore>m.awayScore;
+      const aW=m.played&&m.awayScore>m.homeScore;
+      const sc=m.played?`${m.homeScore} – ${m.awayScore}`:'VS';
+      const t=m.time!=null?`<span class="st-final-time">${m2t(m.time)}</span>`:'';
+      return `<div class="st-final-row${m.played?' played':m.home==='TBD'?' tbd':' upcoming'}">
+        ${t}
+        <span class="st-final-team${hW?' won':''}">${teamName(m.home)}</span>
+        <span class="st-final-score">${sc}</span>
+        <span class="st-final-team right${aW?' won':''}">${teamName(m.away)}</span>
+      </div>`;
+    }
+    const _finalMeta={
+      'main_final':  {label:'🏆 Finale Principale',  color:'var(--gold)'},
+      'main_3rd':    {label:'🥉 Petite Finale Principale', color:'var(--gold)'},
+      'consol_final':{label:'🏅 Finale Consolante',  color:'var(--purple)'},
+      'consol_3rd':  {label:'4️⃣ Petite Finale Consolante',color:'var(--purple)'},
+    };
+    const _order=['consol_3rd','main_3rd','consol_final','main_final'];
+    _order.forEach(phase=>{
+      const m=DATA.matches.find(x=>x.phase===phase);
+      if(!m) return;
+      const meta=_finalMeta[phase];
+      sh+=`<div class="card"><div class="card-hd" style="color:${meta.color}">${meta.label}</div>${finalMatchHTML(m)}</div>`;
     });
-    const cutoff=Math.ceil(pool.length/2);
-    rows.slice(0,cutoff).forEach(t=>mainIds.add(t.id));
-  });
 
-  const allTeamsRanked=DATA.teams.map(team=>{
-    const s=stMap[team.id]||{p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0};
-    return{...team,...s,isMain:mainIds.has(team.id)};
-  }).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
-
-  const pW=DATA.cfg.ptsW??3,pD=DATA.cfg.ptsD??1,pL=DATA.cfg.ptsL??0;
-  let html=`<div class="card"><div class="card-hd">🏆 Classement Général</div>`;
-  html+=`<div class="st-row header" style="grid-template-columns:30px 1fr 60px 28px 28px 28px 28px 28px 28px 36px"><span>#</span><span>Équipe</span><span>Phase</span><span>J</span><span>V</span><span>N</span><span>D</span><span>BP</span><span>BC</span><span>Pts</span></div>`;
-  allTeamsRanked.forEach((t,ri)=>{
-    const medal=ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'';
-    const phaseLabel=t.isMain?'🥇 Princ.':'🥈 Consol.';
-    const phaseColor=t.isMain?'var(--gold)':'var(--purple)';
-    html+=`<div class="st-row" style="grid-template-columns:30px 1fr 60px 28px 28px 28px 28px 28px 28px 36px"><span style="font-size:.75rem;font-weight:700">${ri+1}</span><span>${medal} ${t.name}</span><span style="font-size:.6rem;font-weight:700;color:${phaseColor}">${phaseLabel}</span><span>${t.p||0}</span><span>${t.w||0}</span><span>${t.d||0}</span><span>${t.l||0}</span><span>${t.gf||0}</span><span>${t.ga||0}</span><span class="st-pts">${t.pts||0}</span></div>`;
-  });
-  html+=`</div>`;
-
-  // ── 2. Classements par poule (pendant la phase de poules) ──
-  if(!poolDone){
-    let poolHtml='';
-    DATA.pools.forEach((pool,pi)=>{
-      const rows=[...pool].map(t=>stMap[t.id]).filter(Boolean).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
-      poolHtml+=standingsTable(rows,`Poule ${String.fromCharCode(65+pi)}`);
-    });
-    out.innerHTML=html+poolHtml;
-    return;
-  }
-
-  // ── 3. Classements de phase finale (Principale & Consolante) — après poules ──
-  const mainStMap=computeFinalStandings('main');
-  const consolStMap=computeFinalStandings('consol');
-  const hasMain=Object.keys(mainStMap).length>0;
-  const hasConsol=Object.keys(consolStMap).length>0;
-
-  if(hasMain||hasConsol){
-    if(hasMain){
-      const mainRows=Object.values(mainStMap).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
-      html+=standingsTable(mainRows,'🥇 Poule Principale');
-    }
-    if(hasConsol){
-      const consolRows=Object.values(consolStMap).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
-      html+=standingsTable(consolRows,'🥈 Poule Consolante');
-    }
-  }
-
-  // ── 4. Classement final du tournoi si finales jouées ──
-  const mainFinalMs=DATA.matches.filter(m=>m.phase==='main_final'&&m.played);
-  const mainSmallMs=DATA.matches.filter(m=>m.phase==='main_3rd'&&m.played);
-  const consolFinalMs=DATA.matches.filter(m=>m.phase==='consol_final'&&m.played);
-  const consolSmallMs=DATA.matches.filter(m=>m.phase==='consol_3rd'&&m.played);
-
-  if(mainFinalMs.length||consolFinalMs.length){
-    const finalRanking=[];
-    if(mainFinalMs.length){
-      const mf=mainFinalMs[0];
-      const w=mf.homeScore>mf.awayScore?mf.home:mf.away,l=mf.homeScore>mf.awayScore?mf.away:mf.home;
-      finalRanking.push({place:1,id:w,label:'🥇 1ère place'});
-      finalRanking.push({place:2,id:l,label:'🥈 2ème place'});
-    }
-    if(mainSmallMs.length){
-      const ms=mainSmallMs[0];
-      const w=ms.homeScore>ms.awayScore?ms.home:ms.away,l=ms.homeScore>ms.awayScore?ms.away:ms.home;
-      finalRanking.push({place:3,id:w,label:'🥉 3ème place'});
-      finalRanking.push({place:4,id:l,label:'4ème place'});
-    }
-    if(consolFinalMs.length){
-      const cf=consolFinalMs[0];
-      const w=cf.homeScore>cf.awayScore?cf.home:cf.away,l=cf.homeScore>cf.awayScore?cf.away:cf.home;
-      finalRanking.push({place:finalRanking.length+1,id:w,label:'🏅 1er Consolante'});
-      finalRanking.push({place:finalRanking.length+1,id:l,label:'2e Consolante'});
-    }
-    if(consolSmallMs.length){
-      const cs=consolSmallMs[0];
-      const w=cs.homeScore>cs.awayScore?cs.home:cs.away,l=cs.homeScore>cs.awayScore?cs.away:cs.home;
-      finalRanking.push({place:finalRanking.length+1,id:w,label:'3e Consolante'});
-      finalRanking.push({place:finalRanking.length+1,id:l,label:'4e Consolante'});
-    }
-    if(finalRanking.length){
-      html+=`<div class="card"><div class="card-hd">🏆 Classement Final</div>`;
-      finalRanking.forEach(r=>{
-        const name=teamName(r.id);
-        html+=`<div class="st-row"><span style="font-size:.8rem;font-weight:700">${r.place}</span><span>${name}</span><span style="font-size:.7rem;color:var(--muted)">${r.label}</span></div>`;
+  // ══ Phase 2 : Phase finale en cours ══
+  } else if(poolDone&&finalMatches.length>0){
+    const mainStMap=computeFinalStandings('main');
+    if(Object.keys(mainStMap).length){
+      const rows=Object.values(mainStMap).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
+      sh+=`<div class="card"><div class="card-hd" style="color:var(--gold)">🥇 Poule Principale</div>`;
+      sh+=`<div class="st-row header"><span>#</span><span>Équipe</span><span>J</span><span>V</span><span>D</span><span>Pts</span></div>`;
+      rows.forEach((s,ri)=>{
+        const medal=ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'';
+        sh+=`<div class="st-row"><span>${medal||ri+1}</span><span>${s.name}</span><span>${s.p}</span><span>${s.w}</span><span>${s.l}</span><span class="st-pts">${s.pts}</span></div>`;
       });
-      html+=`</div>`;
+      sh+=`</div>`;
     }
+    const consolStMap=computeFinalStandings('consol');
+    if(Object.keys(consolStMap).length){
+      const rows=Object.values(consolStMap).sort((a,b)=>(b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga))||(b.gf-a.gf));
+      sh+=`<div class="card"><div class="card-hd" style="color:var(--purple)">🥈 Poule Consolante</div>`;
+      sh+=`<div class="st-row header"><span>#</span><span>Équipe</span><span>J</span><span>V</span><span>D</span><span>Pts</span></div>`;
+      rows.forEach((s,ri)=>{
+        const medal=ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'';
+        sh+=`<div class="st-row"><span>${medal||ri+1}</span><span>${s.name}</span><span>${s.p}</span><span>${s.w}</span><span>${s.l}</span><span class="st-pts">${s.pts}</span></div>`;
+      });
+      sh+=`</div>`;
+    }
+
+  // ══ Phase 1 : Poules en cours ══
+  } else {
+    const stMap=computeStandings();
+    DATA.pools.forEach((pool,pi)=>{
+      const rows=[...pool].sort((a,b)=>{
+        const sa=stMap[a.id]||{pts:0,gf:0,ga:0},sb=stMap[b.id]||{pts:0,gf:0,ga:0};
+        return(sb.pts-sa.pts)||((sb.gf-sb.ga)-(sa.gf-sa.ga))||(sb.gf-sa.gf);
+      });
+      const cutoff=Math.ceil(pool.length/2);
+      sh+=`<div class="card"><div class="card-hd">Poule ${String.fromCharCode(65+pi)}</div>`;
+      sh+=`<div class="st-row header"><span>#</span><span>Équipe</span><span>J</span><span>V</span><span>D</span><span>Pts</span></div>`;
+      rows.forEach((t,ri)=>{
+        const s=stMap[t.id]||{p:0,w:0,d:0,l:0,pts:0};
+        const isMain=ri<cutoff;
+        sh+=`<div class="st-row${isMain?' st-main':''}">
+          <span style="color:var(--muted);font-size:.7rem">${ri+1}</span>
+          <span>${t.name}${isMain?'<span style="color:var(--gold);font-size:.55rem;margin-left:.3rem">★</span>':''}</span>
+          <span>${s.p}</span><span>${s.w}</span><span>${s.l}</span>
+          <span class="st-pts">${s.pts}</span>
+        </div>`;
+        if(ri===cutoff-1&&ri<rows.length-1) sh+=`<div class="st-sep"></div>`;
+      });
+      sh+=`</div>`;
+    });
   }
 
-  out.innerHTML=html||'<div class="empty-msg">Aucun classement disponible</div>';
+  if(!sh) sh='<div class="empty-msg">En attente des poules…</div>';
+  out.innerHTML=sh;
 }
 
 // ── RENDU : Onglet Planning — même règle que l'Admin ───────────────────────
