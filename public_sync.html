@@ -50,13 +50,6 @@ body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);
 .ticker{background:var(--acc);color:#fff;padding:.45rem .9rem;font-size:.78rem;font-weight:600;
   white-space:nowrap;overflow:hidden}
 .ticker-inner{display:inline-block}
-.chrono-box{text-align:center;padding:1.5rem 1rem}
-.chrono-time{font-family:'Bebas Neue',sans-serif;font-size:3.2rem;letter-spacing:.04em;color:var(--acc)}
-.chrono-time.running{color:#4ade80}
-.chrono-time.urgent{color:#facc15;animation:blink .8s infinite}
-.chrono-time.finished{color:#f87171;animation:blink .5s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
-.chrono-label{font-size:.8rem;color:var(--muted);margin-top:.3rem}
 .fullscreen-btn{position:fixed;bottom:1rem;right:1rem;z-index:60;background:var(--acc);color:#fff;
   border:none;border-radius:50px;padding:.7rem 1.1rem;font-size:.78rem;font-weight:700;box-shadow:0 3px 14px rgba(0,0,0,.25)}
 /* ── Styles onglet Direct — calqués sur l'onglet Affichage Admin ── */
@@ -121,6 +114,7 @@ body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);
   <div class="topbar">
     <div class="topbar-title"><span id="live-dot" class="live-dot"></span><span id="tournament-name">Tournoi</span></div>
     <div style="font-size:.7rem;color:var(--muted)" id="last-update">—</div>
+    <button onclick="fetchData()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:.3rem .5rem;font-size:.7rem;cursor:pointer;color:var(--acc)">🔄</button>
   </div>
   <div class="ticker"><div class="ticker-inner" id="ticker-text">Chargement…</div></div>
   <div class="tabs">
@@ -128,7 +122,6 @@ body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);
     <div class="tab" data-tab="standings">📊 Classements</div>
     <div class="tab" data-tab="planning">📅 Planning</div>
     <div class="tab" data-tab="arbitres">⚖️ Arbitres</div>
-    <div class="tab" data-tab="chrono">⏱ Chrono</div>
   </div>
 
   <div class="page active" id="page-live">
@@ -164,13 +157,6 @@ body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);
     <div id="arbitres-out"><div class="empty-msg">Chargement…</div></div>
   </div>
 
-  <div class="page" id="page-chrono">
-    <div class="chrono-box">
-      <div class="chrono-time" id="chrono-display">--:--</div>
-      <div class="chrono-label" id="chrono-label">Chronomètre</div>
-    </div>
-  </div>
-
   <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Plein écran</button>
 </div>
 
@@ -179,11 +165,12 @@ body{font-family:'Sora',Arial,sans-serif;background:var(--bg);color:var(--text);
 // VUE PUBLIQUE — LECTURE SEULE STRICTE
 // Aucune fonction d'écriture n'existe dans ce fichier : pas de saveState,
 // pas d'accès à un quelconque token, pas de modification de match/score/arbitre.
-// Les données sont lues exclusivement depuis tournament-data.json (polling 8s).
+// Les données sont lues exclusivement depuis tournament-data.json, mis à jour
+// uniquement quand l'Admin clique sur "Publier la diffusion" (pas de polling
+// automatique côté public — rechargez la page pour récupérer la dernière publication).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const POLL_INTERVAL_MS = 5000; // réduit de 8s à 5s pour meilleure réactivité
-let DATA = null; // dernier état reçu : {cfg, teams, pools, matches, arbitres, finalsValidated, tournamentValidated, ts}
+let DATA = null; // dernier état reçu : {cfg, teams, pools, matches, arbitres, finalsValidated, tournamentValidated, ts, tickerMsg}
 let lastFetchOk = false;
 
 const pad=n=>String(n).padStart(2,'0');
@@ -614,72 +601,6 @@ function renderArbitres(){
   out.innerHTML=html||'<div class="empty-msg">Aucune affectation d&#39;arbitre</div>';
 }
 
-// ── RENDU : Chronomètre (lecture seule — reflète l'état Admin en temps réel) ──
-// Source principale : BroadcastChannel 'hb_chrono_sync' (émis chaque seconde par l'Admin).
-// Fallback : chronoState publié sur GitHub (polling 5s), utilisé au chargement ou
-//            si l'Admin est sur un réseau différent (BroadcastChannel limité au même domaine).
-
-// Fonction utilitaire partagée : applique un état chrono sur les éléments DOM
-function _applyChronoState(remaining, total, running, nextMsg){
-  const dispEl=document.getElementById('chrono-display');
-  const labelEl=document.getElementById('chrono-label');
-  if(!dispEl||!labelEl) return;
-  const isFinished=(!running && remaining===0 && total>0);
-  const isUrgent=(running && remaining>0 && remaining<60);
-  if(nextMsg){
-    dispEl.textContent='Place aux prochains matchs';
-    dispEl.className='chrono-time';
-    labelEl.textContent='';
-  } else if(isFinished){
-    dispEl.textContent='00:00';
-    dispEl.className='chrono-time finished';
-    labelEl.textContent='⏹ Fin du chrono';
-  } else if(total===0 && !running){
-    dispEl.textContent='--:--';
-    dispEl.className='chrono-time';
-    labelEl.textContent='En attente du chrono Admin…';
-  } else {
-    const m=Math.floor(remaining/60), s=remaining%60;
-    dispEl.textContent=`${pad(m)}:${pad(s)}`;
-    dispEl.className='chrono-time'+(running&&!isUrgent?' running':'')+(isUrgent?' urgent':'');
-    labelEl.textContent=running?'⏱ Match en cours':(remaining>0?'⏸ Pause':'');
-  }
-}
-
-// BroadcastChannel : écoute l'état exact émis par l'Admin chaque seconde (même domaine/réseau)
-let _bcChronoActive=false;
-try{
-  const _pubBC=new BroadcastChannel('hb_chrono_sync');
-  _pubBC.addEventListener('message', e=>{
-    if(!e.data||e.data.type!=='chrono') return;
-    _bcChronoActive=true; // BC disponible : on l'utilise comme source principale
-    _applyChronoState(e.data.remaining, e.data.total, e.data.running, e.data.nextMsg||false);
-  });
-}catch(err){ /* BroadcastChannel non supporté — fallback GitHub uniquement */ }
-
-// renderChrono : utilisé au chargement (DATA disponible) et comme fallback si BC absent
-function renderChrono(){
-  if(_bcChronoActive) return; // BC actif : pas besoin de recalculer, déjà mis à jour
-  if(!DATA||!DATA.chronoState) return;
-  const cs=DATA.chronoState;
-  if(!cs.display || cs.display==='--:--'){
-    // Aucun chrono actif publié
-    const dispEl=document.getElementById('chrono-display');
-    const labelEl=document.getElementById('chrono-label');
-    if(dispEl){ dispEl.textContent='--:--'; dispEl.className='chrono-time'; }
-    if(labelEl) labelEl.textContent='En attente du chrono Admin…';
-    return;
-  }
-  // Recalcul depuis le snapshot GitHub avec compensation de dérive
-  const publishedAt=cs.ts||DATA.ts||Date.now();
-  const elapsedSec=Math.floor((Date.now()-publishedAt)/1000);
-  const parts=(cs.display||'0:0').split(':').map(Number);
-  const snapshotSec=(parts[0]||0)*60+(parts[1]||0);
-  const remaining=cs.running ? Math.max(0, snapshotSec-elapsedSec) : snapshotSec;
-  const total=cs.total||snapshotSec||0;
-  _applyChronoState(remaining, total, cs.running||false, cs.nextMsg||false);
-}
-
 function renderAll(){
   if(!DATA) return;
   document.getElementById('tournament-name').textContent = DATA.cfg.name || 'Tournoi';
@@ -687,7 +608,6 @@ function renderAll(){
   renderStandings();
   renderPlanning();
   renderArbitres();
-  renderChrono();
 }
 
 // ── Navigation par onglets ──────────────────────────────────────────────
@@ -709,14 +629,15 @@ function toggleFullscreen(){
 }
 
 // ── Initialisation ──────────────────────────────────────────────────────
+// Pas de polling automatique : les données ne changent qu'au clic Admin sur
+// "Publier la diffusion". On récupère donc l'état une seule fois au chargement,
+// puis seulement quand l'utilisateur recharge la page manuellement.
 REPO_CFG = getRepoConfig();
 if(!REPO_CFG){
   document.getElementById('config-screen').style.display='block';
 } else {
   document.getElementById('app').style.display='block';
   fetchData();
-  setInterval(fetchData, POLL_INTERVAL_MS);
-  setInterval(renderChrono, 1000); // l'horloge avance même sans nouvelle donnée
 }
 </script>
 </body>
