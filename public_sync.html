@@ -207,25 +207,57 @@ function manualConfig(){
 
 let REPO_CFG=null;
 
-function rawUrl(){
-  // raw.githubusercontent.com : pas de quota, pas de CORS, JSON direct
-  return `https://raw.githubusercontent.com/${REPO_CFG.owner}/${REPO_CFG.repo}/data/tournament-data.json?t=${Date.now()}`;
+function dataUrl(){
+  // L'API Contents de GitHub (pas raw.githubusercontent.com) : ce dernier met le
+  // contenu en cache plusieurs minutes côté CDN GitHub, indépendamment du paramètre
+  // anti-cache utilisé. C'était la cause exacte de la désynchronisation observée.
+  // L'API Contents renvoie systématiquement la version la plus récente du fichier.
+  return `https://api.github.com/repos/${REPO_CFG.owner}/${REPO_CFG.repo}/contents/tournament-data.json?ref=data&_=${Date.now()}`;
 }
 
 async function fetchData(){
   try{
-    const resp=await fetch(rawUrl(),{cache:'no-store'});
+    const resp=await fetch(dataUrl(),{cache:'no-store',headers:{'Accept':'application/vnd.github.v3+json'}});
     if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const json=await resp.json();
+    const apiData=await resp.json();
+    // L'API Contents renvoie le fichier encodé en base64 dans apiData.content
+    const decoded=decodeURIComponent(escape(atob(apiData.content.replace(/\n/g,''))));
+    const json=JSON.parse(decoded);
+    // Succès : on remplace les données affichées par la nouvelle version
     DATA=json;
     lastFetchOk=true;
     renderAll();
     updateLiveDot(true);
+    _hideRefreshError();
   }catch(e){
+    // Échec : on NE TOUCHE PAS à DATA — les informations actuellement affichées
+    // restent visibles, conformément à la demande. On affiche juste un message discret.
     lastFetchOk=false;
     updateLiveDot(false);
+    _showRefreshError();
     console.warn('Échec récupération données :', e);
   }
+}
+
+// Message discret affiché brièvement en cas d'échec du bouton Actualiser
+let _refreshErrorTimer=null;
+function _showRefreshError(){
+  let el=document.getElementById('refresh-error-msg');
+  if(!el){
+    el=document.createElement('div');
+    el.id='refresh-error-msg';
+    el.style.cssText='position:fixed;bottom:4.5rem;right:1rem;z-index:61;background:rgba(0,0,0,.78);color:#fff;'
+      +'font-size:.72rem;padding:.45rem .75rem;border-radius:8px;max-width:220px;text-align:right';
+    document.body.appendChild(el);
+  }
+  el.textContent='⚠ Mise à jour indisponible — données actuelles conservées';
+  el.style.display='block';
+  clearTimeout(_refreshErrorTimer);
+  _refreshErrorTimer=setTimeout(()=>{ el.style.display='none'; }, 4000);
+}
+function _hideRefreshError(){
+  const el=document.getElementById('refresh-error-msg');
+  if(el) el.style.display='none';
 }
 
 function updateLiveDot(ok){
