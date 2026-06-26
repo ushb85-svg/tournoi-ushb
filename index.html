@@ -1906,9 +1906,6 @@ function saveState(){
       document.getElementById('save-dot').className='save-dot unsaved';
       document.getElementById('save-label').textContent='Erreur sauvegarde';
     }
-    // Hook diffusion publique : publie l'état vers GitHub si la diffusion est active.
-    // N'a aucun effet si la diffusion n'a jamais été configurée/démarrée (vérifié dans la fonction).
-    if(typeof _publishTournamentData==='function') _publishTournamentData();
   },600);
 }
 function loadSave(){
@@ -5490,7 +5487,7 @@ init();
 //  - un hook optionnel sur saveState() (voir bloc 4 — explication fournie séparément)
 // Aucune fonction métier existante n'est modifiée ici.
 
-const SHARE_LIVE_KEY = 'hb_share_live_cfg'; // {owner, repo, token, broadcasting}
+const SHARE_LIVE_KEY = 'hb_share_live_cfg'; // {owner, repo, token}
 
 function _shareLiveCfg(){
   try{ return JSON.parse(localStorage.getItem(SHARE_LIVE_KEY)) || {}; }
@@ -5515,7 +5512,6 @@ function openShareLivePanel(){
     const url = _shareLivePublicUrl(cfg);
     document.getElementById('share-live-url').value = url;
     _renderShareLiveQR(url);
-    _updateShareLiveToggleUI();
   } else {
     document.getElementById('share-live-config-step').style.display='block';
     document.getElementById('share-live-active-step').style.display='none';
@@ -5569,78 +5565,68 @@ function _renderShareLiveQR(url){
   }
 }
 
-function _updateShareLiveToggleUI(){
-  const cfg=_shareLiveCfg();
+// ── Bouton "Publier la diffusion" : statut visuel pendant l'envoi ──────────
+function _setPublishButtonState(state){
+  // state: 'idle' | 'sending' | 'ok' | 'error'
   const btn=document.getElementById('share-live-toggle-btn');
-  const status=document.getElementById('share-live-status');
-  if(cfg.broadcasting){
-    btn.textContent='⏸ Arrêter la diffusion';
+  if(!btn) return;
+  if(state==='sending'){
+    btn.disabled=true;
+    btn.textContent='⏳ Publication en cours…';
+    btn.style.background='var(--muted,#888)'; btn.style.color='#fff';
+  } else if(state==='ok'){
+    btn.disabled=false;
+    btn.textContent='✓ Publié !';
+    btn.style.background='#20c368'; btn.style.color='#fff';
+    setTimeout(()=>_setPublishButtonState('idle'), 2200);
+  } else if(state==='error'){
+    btn.disabled=false;
+    btn.textContent='⚠ Échec — réessayer';
     btn.style.background='#c0392b'; btn.style.color='#fff';
-    status.innerHTML='🟢 <b>Diffusion active</b> — les téléphones se mettent à jour toutes les 8 secondes';
   } else {
-    btn.textContent='▶ Démarrer la diffusion';
+    btn.disabled=false;
+    btn.textContent='📤 Publier la diffusion';
     btn.style.background='var(--acc,#d42e20)'; btn.style.color='#fff';
-    status.innerHTML='⚪ Diffusion arrêtée';
   }
 }
 
-function toggleLiveBroadcast(){
-  const cfg=_shareLiveCfg();
-  cfg.broadcasting = !cfg.broadcasting;
-  _shareLiveSaveCfg(cfg);
-  _updateShareLiveToggleUI();
-  if(cfg.broadcasting){
-    toast('Diffusion démarrée ✓','ok');
-    _publishTournamentData(); // publication immédiate au démarrage
-    _startShareLiveAutoPublish();
-  } else {
-    toast('Diffusion arrêtée','info');
-    _stopShareLiveAutoPublish();
-  }
+// Déclenché uniquement par un clic sur le bouton "Publier la diffusion".
+// Aucun timer, aucun hook automatique : c'est l'unique point d'entrée de la publication.
+async function publishLiveNow(){
+  _setPublishButtonState('sending');
+  const ok = await _doPublishTournamentData();
+  _setPublishButtonState(ok?'ok':'error');
+  if(ok) toast('Diffusion publiée ✓','ok');
+  else toast('Échec de la publication','err');
 }
 
 // ── Publication des données vers GitHub (fichier tournament-data.json du dépôt) ────
 // Utilise l'API Contents de GitHub : nécessite de connaître le sha existant du fichier
 // pour le mettre à jour (sinon GitHub refuse l'écrasement).
-let _shareLivePublishTimer=null;
+// Retourne true/false pour indiquer le succès à publishLiveNow().
 let _shareLivePublishing=false;
-let _shareLiveDebounceTimer=null;
-
-// Wrapper debounce : si plusieurs déclenchements arrivent en rafale (ex. saisie rapide),
-// seul le dernier est effectivement envoyé (délai 400ms). Ne bloque plus les publications
-// déclenchées par action utilisateur même si le timer 8s vient de s'exécuter.
-function _publishTournamentData(){
-  clearTimeout(_shareLiveDebounceTimer);
-  _shareLiveDebounceTimer=setTimeout(_doPublishTournamentData, 400);
-}
 
 async function _doPublishTournamentData(){
   const cfg=_shareLiveCfg();
-  if(!cfg.owner||!cfg.repo||!cfg.token||!cfg.broadcasting) return;
-  if(_shareLivePublishing) return; // évite les publications strictement concurrentes (réseau)
+  if(!cfg.owner||!cfg.repo||!cfg.token){
+    toast('Configurez d\'abord le dépôt GitHub','err');
+    return false;
+  }
+  if(_shareLivePublishing) return false; // évite les publications concurrentes (réseau)
   _shareLivePublishing=true;
 
   const apiUrl=`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/tournament-data.json`;
   // tickerMsg : message du bandeau inférieur (localStorage ou champ de saisie)
   const _tickerMsg=(document.getElementById('ticker-custom-msg')||{}).value
     || localStorage.getItem('hb_ticker_msg') || '';
-  // chronoState : capture instantanée du chrono Admin pour synchronisation côté public
-  // Le client public calcule l'écoulement depuis ts pour rester synchronisé même entre deux polls
-  const _chronoEl=document.getElementById('chrono-display');
-  const _chronoText=_chronoEl?_chronoEl.textContent:'--:--';
-  const _chronoRunning=_chronoEl&&_chronoEl.classList.contains('running');
-  const _chronoFinished=_chronoEl&&_chronoEl.classList.contains('finished');
-  const _chronoNextMsg=_chronoEl&&_chronoEl.textContent==='Place aux prochains matchs';
-  // Extraire remaining et total depuis les variables internes du chrono pour le fallback Public
-  // Ces valeurs sont exposées par l'IIFE du chrono via window._chronoSnapshot
-  const _snap=window._chronoSnapshot||{};
+  // Publication manuelle : uniquement les données nécessaires à l'onglet Affichage
+  // (matchs en cours/à venir, derniers résultats, classements, bandeau).
+  // Le chronomètre n'est plus publié — l'onglet Chrono a été supprimé côté Public Sync.
   const payload={
     cfg:S.cfg, teams:S.teams, pools:S.pools, matches:S.matches,
     arbitres:S.arbitres, finalsValidated:S.finalsValidated,
     tournamentValidated:S.tournamentValidated, ts:Date.now(),
-    tickerMsg:_tickerMsg,
-    chronoState:{display:_chronoText, running:_chronoRunning, finished:_chronoFinished, nextMsg:_chronoNextMsg,
-      remaining:_snap.remaining||0, total:_snap.total||0, ts:Date.now()}
+    tickerMsg:_tickerMsg
   };
   const contentB64=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
 
@@ -5657,7 +5643,7 @@ async function _doPublishTournamentData(){
       method:'PUT',
       headers:{Authorization:`token ${cfg.token}`, 'Content-Type':'application/json'},
       body:JSON.stringify({
-        message:'Mise à jour diffusion en direct',
+        message:'Publication manuelle de la diffusion',
         content:contentB64,
         branch:'data',
         ...(sha?{sha}:{})
@@ -5666,32 +5652,16 @@ async function _doPublishTournamentData(){
     if(!putResp.ok){
       const err=await putResp.json().catch(()=>({}));
       console.warn('Publication diffusion échouée :', err.message||putResp.status);
+      return false;
     }
+    return true;
   }catch(e){
     console.warn('Erreur réseau lors de la publication diffusion :', e);
+    return false;
   }finally{
     _shareLivePublishing=false;
   }
 }
-
-function _startShareLiveAutoPublish(){
-  _stopShareLiveAutoPublish();
-  // Le timer appelle directement _doPublishTournamentData pour éviter l'accumulation de debounce
-  _shareLivePublishTimer=setInterval(_doPublishTournamentData, 8000);
-}
-function _stopShareLiveAutoPublish(){
-  if(_shareLivePublishTimer){clearInterval(_shareLivePublishTimer);_shareLivePublishTimer=null;}
-}
-
-// Si la diffusion était active lors du dernier chargement de page, la relancer automatiquement
-(function _resumeShareLiveIfNeeded(){
-  const cfg=_shareLiveCfg();
-  if(cfg.broadcasting){
-    _startShareLiveAutoPublish();
-    // Publication immédiate au redémarrage — évite d'attendre le premier tick (8s)
-    _publishTournamentData();
-  }
-})();
 </script>
 
 <!-- ═══════════════════════════════════════════════════════ MODAL PARTAGE EN DIRECT ═══════════════════════════════════════════════════════ -->
@@ -5724,7 +5694,7 @@ function _stopShareLiveAutoPublish(){
 
     <!-- Étape diffusion (token GitHub présent) -->
     <div id="share-live-active-step" style="display:none">
-      <div id="share-live-status" style="font-size:.85rem;color:var(--muted,#888);margin-bottom:.85rem;text-align:center">—</div>
+      <div id="share-live-status" style="font-size:.8rem;color:var(--muted,#888);margin-bottom:.85rem;text-align:center">Cliquez sur le bouton ci-dessous chaque fois que vous voulez mettre à jour les informations publiques.</div>
       <div style="display:flex;justify-content:center;margin-bottom:1rem">
         <div id="share-live-qrcode" style="width:200px;height:200px;background:#f5f5f5;border-radius:8px;display:flex;align-items:center;justify-content:center"></div>
       </div>
@@ -5732,7 +5702,7 @@ function _stopShareLiveAutoPublish(){
         <input type="text" id="share-live-url" readonly style="flex:1;padding:.5rem;border:1px solid var(--border,#ddd);border-radius:6px;font-size:.78rem;background:var(--s2,#f5f5f5)">
         <button onclick="copyShareLiveUrl()" style="padding:.5rem .75rem;background:var(--s3,#eee);border:1px solid var(--border,#ddd);border-radius:6px;cursor:pointer;font-size:.78rem;font-weight:600">Copier</button>
       </div>
-      <button id="share-live-toggle-btn" onclick="toggleLiveBroadcast()" style="width:100%;padding:.65rem;border:none;border-radius:8px;font-weight:700;cursor:pointer;margin-bottom:.5rem">▶ Démarrer la diffusion</button>
+      <button id="share-live-toggle-btn" onclick="publishLiveNow()" style="width:100%;padding:.65rem;border:none;border-radius:8px;font-weight:700;cursor:pointer;margin-bottom:.5rem;background:var(--acc,#d42e20);color:#fff">📤 Publier la diffusion</button>
       <button onclick="resetShareLiveConfig()" style="width:100%;padding:.4rem;background:none;border:none;color:var(--muted,#888);font-size:.72rem;cursor:pointer;text-decoration:underline">Reconfigurer le dépôt GitHub</button>
     </div>
   </div>
