@@ -1316,7 +1316,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   <div class="nav-tab" data-page="display">📺 Affichage</div>
   <div class="nav-tab locked" data-page="planning">📅 Planning</div>
   <div class="nav-tab locked" data-page="arbitres-planning">⚖️ Planning arbitres</div>
-  <button id="btn-share-live" onclick="openShareLivePanel()" style="margin-left:auto;margin-right:.75rem;padding:.5rem 1rem;font-size:.78rem;font-weight:700;letter-spacing:.04em;background:linear-gradient(135deg,#1e7fc4,#1463a0);color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:.4rem;white-space:nowrap">📡 Partager en direct</button>
+  <button id="btn-share-live" onclick="openShareLivePanel()" style="margin-left:auto;margin-right:.5rem;padding:.5rem 1rem;font-size:.78rem;font-weight:700;letter-spacing:.04em;background:linear-gradient(135deg,#1e7fc4,#1463a0);color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:.4rem;white-space:nowrap">📱 QR Code et lien</button>
+  <button id="btn-publish-live" onclick="publishLiveNow()" style="margin-right:.75rem;padding:.5rem 1rem;font-size:.78rem;font-weight:700;letter-spacing:.04em;background:var(--acc,#d42e20);color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:.4rem;white-space:nowrap">📤 Publier la diffusion</button>
   <!-- ═══ CHRONOMÈTRE ═══ -->
   <div class="nav-chrono" title="Chronomètre de match">
     <div class="chrono-display" id="chrono-display">--:--</div>
@@ -5568,7 +5569,7 @@ function _renderShareLiveQR(url){
 // ── Bouton "Publier la diffusion" : statut visuel pendant l'envoi ──────────
 function _setPublishButtonState(state){
   // state: 'idle' | 'sending' | 'ok' | 'error'
-  const btn=document.getElementById('share-live-toggle-btn');
+  const btn=document.getElementById('btn-publish-live');
   if(!btn) return;
   if(state==='sending'){
     btn.disabled=true;
@@ -5632,8 +5633,11 @@ async function _doPublishTournamentData(){
 
   try{
     // 1. Récupérer le sha actuel du fichier (s'il existe déjà)
+    // cache:'no-store' + paramètre ts unique : sans ça, le navigateur renvoyait
+    // une réponse mise en cache contenant un sha obsolète dès la 2e publication,
+    // ce que GitHub refuse (409 Conflict). C'était la cause exacte du blocage.
     let sha=null;
-    const getResp=await fetch(apiUrl+'?ref=data',{headers:{Authorization:`token ${cfg.token}`}});
+    const getResp=await fetch(apiUrl+'?ref=data&_='+Date.now(),{cache:'no-store',headers:{Authorization:`token ${cfg.token}`}});
     if(getResp.ok){
       const getData=await getResp.json();
       sha=getData.sha;
@@ -5669,7 +5673,7 @@ async function _doPublishTournamentData(){
 <div id="share-live-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
   <div style="background:var(--s1,#fff);border-radius:14px;padding:1.75rem;max-width:480px;width:92%;max-height:88vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:.04em;color:var(--acc,#d42e20)">📡 Partager en direct</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:.04em;color:var(--acc,#d42e20)">📱 QR Code et lien</div>
       <button onclick="closeShareLivePanel()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--muted,#888);line-height:1">✕</button>
     </div>
 
@@ -5692,9 +5696,9 @@ async function _doPublishTournamentData(){
       <button onclick="saveShareLiveConfig()" style="width:100%;padding:.6rem;background:var(--acc,#d42e20);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Enregistrer la configuration</button>
     </div>
 
-    <!-- Étape diffusion (token GitHub présent) -->
+    <!-- Étape affichage (token GitHub présent) — uniquement QR code + lien, plus de bouton de publication ici -->
     <div id="share-live-active-step" style="display:none">
-      <div id="share-live-status" style="font-size:.8rem;color:var(--muted,#888);margin-bottom:.85rem;text-align:center">Cliquez sur le bouton ci-dessous chaque fois que vous voulez mettre à jour les informations publiques.</div>
+      <div id="share-live-status" style="font-size:.8rem;color:var(--muted,#888);margin-bottom:.85rem;text-align:center">Scannez ce QR code ou copiez le lien pour accéder à la diffusion publique.</div>
       <div style="display:flex;justify-content:center;margin-bottom:1rem">
         <div id="share-live-qrcode" style="width:200px;height:200px;background:#f5f5f5;border-radius:8px;display:flex;align-items:center;justify-content:center"></div>
       </div>
@@ -5702,7 +5706,6 @@ async function _doPublishTournamentData(){
         <input type="text" id="share-live-url" readonly style="flex:1;padding:.5rem;border:1px solid var(--border,#ddd);border-radius:6px;font-size:.78rem;background:var(--s2,#f5f5f5)">
         <button onclick="copyShareLiveUrl()" style="padding:.5rem .75rem;background:var(--s3,#eee);border:1px solid var(--border,#ddd);border-radius:6px;cursor:pointer;font-size:.78rem;font-weight:600">Copier</button>
       </div>
-      <button id="share-live-toggle-btn" onclick="publishLiveNow()" style="width:100%;padding:.65rem;border:none;border-radius:8px;font-weight:700;cursor:pointer;margin-bottom:.5rem;background:var(--acc,#d42e20);color:#fff">📤 Publier la diffusion</button>
       <button onclick="resetShareLiveConfig()" style="width:100%;padding:.4rem;background:none;border:none;color:var(--muted,#888);font-size:.72rem;cursor:pointer;text-decoration:underline">Reconfigurer le dépôt GitHub</button>
     </div>
   </div>
