@@ -5503,7 +5503,7 @@ function _shareLiveSaveCfg(cfg){
 function _shareLivePublicUrl(cfg){
   // owner/repo passés en query params : public.html n'a ainsi besoin d'aucune
   // configuration manuelle sur le téléphone qui ouvre le lien.
-  return `https://${cfg.owner}.github.io/${cfg.repo}/public.html?owner=${encodeURIComponent(cfg.owner)}&repo=${encodeURIComponent(cfg.repo)}`;
+  return `https://${cfg.owner}.github.io/${cfg.repo}/public_sync.html?owner=${encodeURIComponent(cfg.owner)}&repo=${encodeURIComponent(cfg.repo)}`;
 }
 
 function openShareLivePanel(){
